@@ -10,10 +10,10 @@ import { deriveClassicalAddress } from '../../src/main/wallet/addresses'
 const MASTER = masterKeyFromSeed(mnemonicToSeed('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'))
 
 describe('deriveClassicalAddress', () => {
-  it('derives a valid mainnet classical address (bq… prefix, HASH160 type)', () => {
+  it('derives a valid mainnet classical address (EC… prefix, HASH160 type)', () => {
     const addr = deriveClassicalAddress(MASTER, { chain: 0, index: 0, network: 'mainnet' })
     expect(validateAddress(addr, 'mainnet')).toBe(true)
-    expect(addr.startsWith('bq')).toBe(true)
+    expect(addr.startsWith('EC')).toBe(true)
     expect(decodeAddress(addr).type).toBe('classical')
   })
 
@@ -30,9 +30,9 @@ describe('deriveClassicalAddress', () => {
     expect(new Set([receive0, receive1, change0]).size).toBe(3)
   })
 
-  it('derives a valid testnet address (btq… prefix)', () => {
+  it('derives a valid testnet address (Et… prefix)', () => {
     const addr = deriveClassicalAddress(MASTER, { chain: 0, index: 0, network: 'testnet' })
     expect(validateAddress(addr, 'testnet')).toBe(true)
-    expect(addr.startsWith('btq')).toBe(true)
+    expect(addr.startsWith('Et')).toBe(true)
   })
 })
