@@ -1,0 +1,32 @@
+// Public API of @qbitcoin/chain.
+
+export { ChainClient, type ChainClientConfig } from './ChainClient';
+export { EsploraClient } from './EsploraClient';
+export {
+  ChainError,
+  isRetryableCode,
+  type ChainErrorCode,
+} from './errors';
+export {
+  DEFAULT_NODES,
+  nodesFor,
+  type Network,
+  type NodeEndpoint,
+  type Protocol,
+} from './defaultNodes';
+export {
+  balanceOf,
+  type AddressInfo,
+  type AddressStats,
+  type BlockchainInfo,
+  type BroadcastResult,
+  type ChainTx,
+  type ChainTxIn,
+  type ChainTxOut,
+  type ConfirmationStatus,
+  type FeeEstimates,
+  type TokenInfo,
+  type TokenTransfer,
+  type Utxo,
+} from './types';
+export type { TransportOptions } from './transport';

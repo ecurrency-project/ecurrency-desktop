@@ -1,0 +1,524 @@
+import { describe, expect, it, vi } from 'vitest';
+import { ChainError } from './errors';
+import { EsploraClient } from './EsploraClient';
+import type { NodeEndpoint } from './defaultNodes';
+import addressInfoFixture from './fixtures/address-info.json';
+import utxosFixture from './fixtures/utxos.json';
+import txFixture from './fixtures/tx.json';
+import feesFixture from './fixtures/fee-estimates.json';
+
+const ENDPOINT: NodeEndpoint = {
+  name: 'Test',
+  url: 'https://test.local',
+  protocol: 'esplora',
+  network: 'mainnet',
+  operator: 'Test',
+  priority: 1,
+};
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function textResponse(body: string, status = 200): Response {
+  return new Response(body, { status, headers: { 'Content-Type': 'text/plain' } });
+}
+
+function makeClient(fetchImpl: typeof fetch): EsploraClient {
+  return new EsploraClient(ENDPOINT, { fetchImpl, maxRetries: 0 });
+}
+
+describe('EsploraClient.constructor', () => {
+  it('rejects non-esplora endpoints', () => {
+    expect(
+      () =>
+        new EsploraClient({
+          ...ENDPOINT,
+          protocol: 'jsonrpc',
+        }),
+    ).toThrow(/esplora/);
+  });
+});
+
+describe('EsploraClient.getBlockchainInfo', () => {
+  it('parses tip height + hash from two plain-text endpoints', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation((url) => {
+        const u = String(url);
+        if (u.endsWith('/api/blocks/tip/height')) return Promise.resolve(textResponse('123456'));
+        if (u.endsWith('/api/blocks/tip/hash')) return Promise.resolve(textResponse('abcdef'));
+        return Promise.resolve(new Response('', { status: 404 }));
+      });
+    const client = makeClient(fetchImpl);
+    const info = await client.getBlockchainInfo();
+    expect(info).toEqual({
+      tipHeight: 123456,
+      tipHash: 'abcdef',
+      network: 'mainnet',
+    });
+  });
+
+  it('throws malformed_response on non-integer tip height', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation((url) => {
+        const u = String(url);
+        if (u.endsWith('/api/blocks/tip/height')) return Promise.resolve(textResponse('not-a-number'));
+        if (u.endsWith('/api/blocks/tip/hash')) return Promise.resolve(textResponse('abcdef'));
+        return Promise.resolve(new Response('', { status: 404 }));
+      });
+    const client = makeClient(fetchImpl);
+    await expect(client.getBlockchainInfo()).rejects.toMatchObject({
+      name: 'ChainError',
+      code: 'malformed_response',
+    });
+  });
+});
+
+describe('EsploraClient.getAddressInfo', () => {
+  it('parses the fixture into normalized AddressInfo', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(addressInfoFixture));
+    const client = makeClient(fetchImpl);
+    const info = await client.getAddressInfo(addressInfoFixture.address);
+    expect(info.address).toBe(addressInfoFixture.address);
+    expect(info.chain.fundedTxCount).toBe(3);
+    expect(info.chain.fundedSum).toBe(500_000_000n);
+    expect(info.chain.spentSum).toBe(100_000_000n);
+    expect(info.mempool.fundedTxCount).toBe(0);
+  });
+
+  it('accepts numeric-string sums (node sends spent_txo_sum as a string)', async () => {
+    const raw = {
+      address: 'ECx',
+      chain_stats: {
+        funded_txo_count: 2,
+        funded_txo_sum: 19999,
+        spent_txo_count: 2,
+        spent_txo_sum: '19999',
+        tx_count: 3,
+      },
+      mempool_stats: {
+        funded_txo_count: 0,
+        funded_txo_sum: 0,
+        spent_txo_count: 0,
+        spent_txo_sum: 0,
+        tx_count: 0,
+      },
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const client = makeClient(fetchImpl);
+    const info = await client.getAddressInfo('ECx');
+    expect(info.chain.fundedSum).toBe(19999n);
+    expect(info.chain.spentSum).toBe(19999n);
+  });
+
+  it('rejects empty address with invalid_argument', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = makeClient(fetchImpl);
+    await expect(client.getAddressInfo('')).rejects.toMatchObject({
+      code: 'invalid_argument',
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('URL-encodes the address path segment', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(addressInfoFixture));
+    const client = makeClient(fetchImpl);
+    await client.getAddressInfo('weird/addr#fragment');
+    const url = String(fetchImpl.mock.calls[0]?.[0]);
+    expect(url).toContain('/api/address/weird%2Faddr%23fragment');
+  });
+
+  it('throws malformed_response when fund sum is missing', async () => {
+    const bad = {
+      address: 'EC...',
+      chain_stats: {
+        funded_txo_count: 1,
+        spent_txo_count: 0,
+        spent_txo_sum: 0,
+        tx_count: 1,
+        // funded_txo_sum missing
+      },
+      mempool_stats: addressInfoFixture.mempool_stats,
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(bad));
+    const client = makeClient(fetchImpl);
+    await expect(client.getAddressInfo('EC...')).rejects.toMatchObject({
+      code: 'malformed_response',
+    });
+  });
+});
+
+describe('EsploraClient.listUnspent', () => {
+  it('parses the fixture into normalized UTXOs', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(utxosFixture));
+    const client = makeClient(fetchImpl);
+    const utxos = await client.listUnspent('EC...');
+    expect(utxos).toHaveLength(2);
+    const first = utxos[0]!;
+    expect(first.value).toBe(250_000_000n);
+    expect(first.status.confirmed).toBe(true);
+    expect(first.status.blockHeight).toBe(105432);
+    const second = utxos[1]!;
+    expect(second.status.confirmed).toBe(false);
+    expect(second.status.blockHeight).toBeUndefined();
+  });
+
+  it('throws malformed_response when response is not an array', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ not: 'an array' }));
+    const client = makeClient(fetchImpl);
+    await expect(client.listUnspent('EC...')).rejects.toMatchObject({
+      code: 'malformed_response',
+    });
+  });
+
+  it('returns empty array for an unused address', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([]));
+    const client = makeClient(fetchImpl);
+    const utxos = await client.listUnspent('EC...');
+    expect(utxos).toEqual([]);
+  });
+
+  it('also accepts standard-Esplora object status (backward compat)', async () => {
+    const raw = [
+      {
+        txid: 'aa',
+        vout: 0,
+        value: 5000,
+        status: { confirmed: true, block_height: 9, block_hash: 'h', block_time: 1 },
+      },
+    ];
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const client = makeClient(fetchImpl);
+    const utxos = await client.listUnspent('EC...');
+    expect(utxos[0]!.status.confirmed).toBe(true);
+    expect(utxos[0]!.status.blockHeight).toBe(9);
+  });
+
+  it('parses a token UTXO (token_id + token_amount, native value 0)', async () => {
+    const raw = [
+      {
+        txid: 'ceca437f170e5e6e8f7f05fa4f0010ca0f1cc31c376fc2f29e4d23873cef6ca3',
+        vout: 0,
+        value: 0,
+        status: 'confirmed',
+        height: 1354179,
+        token_id:
+          '8b33404b9e184215e783081af45702e2d8911b08f656f2f0724d5dda73279ccd',
+        token_amount: 56753706,
+      },
+    ];
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const utxo = (await makeClient(fetchImpl).listUnspent('EC...'))[0]!;
+    expect(utxo.value).toBe(0n);
+    expect(utxo.tokenId).toBe(
+      '8b33404b9e184215e783081af45702e2d8911b08f656f2f0724d5dda73279ccd',
+    );
+    expect(utxo.tokenAmount).toBe(56753706n);
+  });
+
+  it('treats a native change output tagged with token_id (no token_amount) as native coin', async () => {
+    // The node tags every output of a token tx with the token id, including the
+    // native-coin change. That change has a positive value and no token_amount, so it
+    // must be an ordinary native coin — not a zero-amount token UTXO.
+    const raw = [
+      {
+        txid: 'd5578c566b940138615149913cd2eca27c67403333cb0a9115e829601b6bb97e',
+        vout: 2,
+        value: 4967986,
+        status: 'confirmed',
+        height: 1462729,
+        token_id: '8b33404b9e184215e783081af45702e2d8911b08f656f2f0724d5dda73279ccd',
+      },
+    ];
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const utxo = (await makeClient(fetchImpl).listUnspent('EC...'))[0]!;
+    expect(utxo.value).toBe(4967986n);
+    expect(utxo.tokenId).toBeUndefined();
+    expect(utxo.tokenAmount).toBeUndefined();
+  });
+});
+
+describe('EsploraClient.getTransaction', () => {
+  it('parses the fixture into normalized ChainTx', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(txFixture));
+    const client = makeClient(fetchImpl);
+    const tx = await client.getTransaction(txFixture.txid);
+    expect(tx.txid).toBe(txFixture.txid);
+    expect(tx.version).toBe(1);
+    expect(tx.vin).toHaveLength(1);
+    expect(tx.vout).toHaveLength(2);
+    expect(tx.vout[0]!.value).toBe(250_000_000n);
+    expect(tx.fee).toBe(1000n);
+    expect(tx.vin[0]!.prevoutValue).toBe(300_000_000n);
+  });
+});
+
+describe('EsploraClient.getAddressTransactions', () => {
+  it('parses an array of transactions', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse([txFixture]));
+    const client = makeClient(fetchImpl);
+    const txs = await client.getAddressTransactions(addressInfoFixture.address);
+    expect(txs).toHaveLength(1);
+    expect(txs[0]!.txid).toBe(txFixture.txid);
+    expect(txs[0]!.fee).toBe(1000n);
+    const url = String(fetchImpl.mock.calls[0]?.[0]);
+    expect(url).toContain('/api/address/');
+    expect(url).toContain('/txs');
+  });
+
+  it('coerces vin.vout when the node sends it as a numeric string', async () => {
+    // The live node sometimes serializes vin.vout as a string — the same
+    // number/string inconsistency we already tolerate on sat sums. Regression
+    // for "Field 'vin.vout' is not a non-negative integer: 1".
+    const tx = {
+      txid: 'aa',
+      tx_type: 'standard',
+      vin: [
+        {
+          txid: 'bb',
+          vout: '1',
+          prevout: { value: 500, scripthash_address: 'ECsource' },
+        },
+      ],
+      vout: [{ scripthash: 'cc', scripthash_address: 'ECout', value: 400 }],
+      size: 200,
+      fee: 1,
+      status: { confirmed: true, block_time: 1700000000, block_height: 10 },
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([tx]));
+    const txs = await makeClient(fetchImpl).getAddressTransactions('EC...');
+    expect(txs[0]!.vin[0]!.vout).toBe(1); // string "1" → number 1
+    expect(txs[0]!.vin[0]!.prevoutValue).toBe(500n);
+    expect(txs[0]!.vin[0]!.prevoutAddress).toBe('ECsource');
+  });
+
+  it('parses token outputs (token_id / amount / decimals)', async () => {
+    const tx = {
+      txid: 'tt',
+      tx_type: 'tokens',
+      vin: [{ txid: 'pp', vout: 0 }],
+      vout: [
+        {
+          scripthash: 'sh',
+          scripthash_address: 'ECrecipient',
+          value: 0,
+          token_id: 'deadbeef',
+          token_amount: 23000000,
+          token_decimals: 6,
+        },
+      ],
+      size: 250,
+      fee: 5,
+      status: { confirmed: true, block_time: 1700000000 },
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([tx]));
+    const txs = await makeClient(fetchImpl).getAddressTransactions('EC...');
+    expect(txs[0]!.version).toBe(4); // tx_type 'tokens' → 4
+    const out = txs[0]!.vout[0]!;
+    expect(out.tokenId).toBe('deadbeef');
+    expect(out.tokenAmount).toBe(23000000n);
+    expect(out.tokenDecimals).toBe(6);
+    expect(out.value).toBe(0n);
+  });
+
+  it('parses token fields on a spent input (prevout)', async () => {
+    const tx = {
+      txid: 'tt',
+      tx_type: 'tokens',
+      vin: [
+        {
+          txid: 'pp',
+          vout: 0,
+          prevout: { value: 0, scripthash_address: 'ECspentToken', token_id: 'deadbeef', token_amount: 15000000, token_decimals: 6 },
+        },
+      ],
+      vout: [{ scripthash: 'sh', scripthash_address: 'ECrecipient', value: 0, token_id: 'deadbeef', token_amount: 5000000, token_decimals: 6 }],
+      size: 250,
+      fee: 5,
+      status: { confirmed: true, block_time: 1700000000 },
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([tx]));
+    const txs = await makeClient(fetchImpl).getAddressTransactions('EC...');
+    const vin = txs[0]!.vin[0]!;
+    expect(vin.prevoutAddress).toBe('ECspentToken');
+    expect(vin.prevoutTokenId).toBe('deadbeef');
+    expect(vin.prevoutTokenAmount).toBe(15000000n);
+    expect(vin.prevoutTokenDecimals).toBe(6);
+  });
+
+  it('returns [] for an address with no transactions', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([]));
+    const client = makeClient(fetchImpl);
+    expect(await client.getAddressTransactions('EC...')).toEqual([]);
+  });
+
+  it('throws malformed_response when the response is not an array', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ not: 'an array' }));
+    const client = makeClient(fetchImpl);
+    await expect(client.getAddressTransactions('EC...')).rejects.toMatchObject({
+      code: 'malformed_response',
+    });
+  });
+});
+
+describe('EsploraClient.getAddressTransfers', () => {
+  it('parses [txid, amount, blockHeight] tuples', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([['d557', 10000000, 1462729]]));
+    const transfers = await makeClient(fetchImpl).getAddressTransfers('EC...', '8b33');
+    expect(transfers).toEqual([{ txid: 'd557', amountAtomic: 10000000n, blockHeight: 1462729 }]);
+  });
+
+  it('leaves blockHeight undefined for an unconfirmed transfer (height 0)', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([['pend', 7, 0]]));
+    const [t] = await makeClient(fetchImpl).getAddressTransfers('EC...', '8b33');
+    expect(t).toEqual({ txid: 'pend', amountAtomic: 7n });
+  });
+
+  it('throws malformed_response when the response is not an array', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ not: 'array' }));
+    await expect(makeClient(fetchImpl).getAddressTransfers('EC...', '8b33')).rejects.toMatchObject({ code: 'malformed_response' });
+  });
+});
+
+describe('EsploraClient.getFeeEstimates', () => {
+  it('parses the fixture map', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(feesFixture));
+    const client = makeClient(fetchImpl);
+    const fees = await client.getFeeEstimates();
+    expect(fees['1']).toBe(25.5);
+    expect(fees['144']).toBe(1.0);
+  });
+
+  it('throws malformed_response when a value is not a number', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ '1': 'fast' }));
+    const client = makeClient(fetchImpl);
+    await expect(client.getFeeEstimates()).rejects.toMatchObject({
+      code: 'malformed_response',
+    });
+  });
+});
+
+describe('EsploraClient.broadcastTransaction', () => {
+  const validHex = 'a'.repeat(200); // 100 bytes of "0a 0a 0a..."
+  const validTxid = 'b'.repeat(64);
+
+  it('POSTs JSON { hex } and parses the JSON { txid } success response', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ txid: validTxid }));
+    const client = makeClient(fetchImpl);
+    const txid = await client.broadcastTransaction(validHex);
+    expect(txid).toBe(validTxid);
+    const init = fetchImpl.mock.calls[0]?.[1];
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ hex: validHex });
+  });
+
+  it('treats an empty 2xx body as success (txid is known locally)', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(textResponse(''));
+    const client = makeClient(fetchImpl);
+    expect(await client.broadcastTransaction(validHex)).toBe('');
+  });
+
+  it('strips whitespace from returned txid', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(textResponse(`${validTxid}\n`));
+    const client = makeClient(fetchImpl);
+    const txid = await client.broadcastTransaction(validHex);
+    expect(txid).toBe(validTxid);
+  });
+
+  it('rejects non-hex input without calling fetch', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = makeClient(fetchImpl);
+    await expect(client.broadcastTransaction('not hex!!!')).rejects.toMatchObject({
+      code: 'invalid_argument',
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty hex', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = makeClient(fetchImpl);
+    await expect(client.broadcastTransaction('')).rejects.toMatchObject({
+      code: 'invalid_argument',
+    });
+  });
+
+  it('rejects hex larger than 100 KB', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = makeClient(fetchImpl);
+    const huge = 'a'.repeat(200_001);
+    await expect(client.broadcastTransaction(huge)).rejects.toMatchObject({
+      code: 'invalid_argument',
+    });
+  });
+
+  it('maps 5xx to broadcast_unavailable (the current prod behavior)', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 500 }));
+    const client = makeClient(fetchImpl);
+    await expect(client.broadcastTransaction(validHex)).rejects.toMatchObject({
+      name: 'ChainError',
+      code: 'broadcast_unavailable',
+      status: 500,
+    });
+  });
+
+  it('maps 4xx to broadcast_rejected', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('bad signature', { status: 422 }));
+    const client = makeClient(fetchImpl);
+    await expect(client.broadcastTransaction(validHex)).rejects.toMatchObject({
+      name: 'ChainError',
+      code: 'broadcast_rejected',
+      status: 422,
+    });
+  });
+
+  it('throws malformed_response if server returns non-txid text', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(textResponse('OK'));
+    const client = makeClient(fetchImpl);
+    await expect(client.broadcastTransaction(validHex)).rejects.toMatchObject({
+      name: 'ChainError',
+      code: 'malformed_response',
+    });
+  });
+
+  it('does NOT retry on broadcast (single attempt)', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 503 }));
+    const client = new EsploraClient(ENDPOINT, {
+      fetchImpl,
+      maxRetries: 5, // even if caller set retries high...
+      backoffMs: 1,
+    });
+    await expect(
+      client.broadcastTransaction(validHex),
+    ).rejects.toMatchObject({ code: 'broadcast_unavailable' });
+    // ...broadcast still only calls fetch once
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+});
+
+describe('ChainError', () => {
+  it('preserves cause and endpoint via constructor', () => {
+    const cause = new TypeError('boom');
+    const err = new ChainError('network', 'msg', {
+      cause,
+      endpoint: 'https://x',
+      status: 500,
+    });
+    expect(err.code).toBe('network');
+    expect(err.cause).toBe(cause);
+    expect(err.endpoint).toBe('https://x');
+    expect(err.status).toBe(500);
+  });
+});

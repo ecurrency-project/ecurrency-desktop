@@ -1,0 +1,884 @@
+/* Design tokens + base styles. Components style themselves inline using these
+   variables (mirroring the design source); this file owns the token values and
+   the global reset. Dark is the default; a light theme is provided for later via
+   [data-theme="light"]. Fonts are the system stack (no remote font fetch). */
+:root {
+  --bg: #131311;
+  --sidebar: #1b1b18;
+  --card: #1b1b18;
+  --card-el: #232220;
+  --well: #232220;
+  --ink-900: #f2f1ed;
+  --ink-700: #c9c7c0;
+  --ink-500: #908e87;
+  --ink-300: #5f5e5a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-s: rgba(255, 255, 255, 0.16);
+  --primary: #ca4545;
+  --primary-h: #b83737;
+  --primary-p: #a32d2d;
+  --red-soft: #3a1a1f;
+  --pq: #b5aeff;
+  --pq-soft: #1f1b40;
+  --success: #1d9e75;
+  --danger: #e07f7a;
+  --warning: #ba7517;
+  --brand: #e8143e;
+  --backdrop: #0b0b09;
+  --frozen: #86a3ba;
+  --frozen-soft: #1e2a33;
+  --graph-line: rgba(255, 255, 255, 0.52);
+  --watch: #b4aea2;
+  --watch-soft: #2a2926;
+  --ring: #7aa2ff;
+  --shadow: 0 30px 70px -18px rgba(0, 0, 0, 0.65), 0 10px 28px -10px rgba(0, 0, 0, 0.5);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --display-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+[data-theme="light"] {
+  --bg: #f6f5f1;
+  --sidebar: #ffffff;
+  --card: #ffffff;
+  --card-el: #ffffff;
+  --well: #efede6;
+  --ink-900: #1c1c1a;
+  --ink-700: #3a3a36;
+  --ink-500: #5f5e5a;
+  --ink-300: #b4b2a9;
+  --border: rgba(20, 19, 17, 0.1);
+  --border-s: rgba(20, 19, 17, 0.18);
+  --primary: #a32d2d;
+  --primary-h: #8a2424;
+  --primary-p: #771e1e;
+  --red-soft: #fcebeb;
+  --pq: #3c3489;
+  --pq-soft: #eeedfe;
+  --success: #157a5c;
+  --danger: #a32d2d;
+  --warning: #9a5e12;
+  --backdrop: #e4e2db;
+  --frozen: #3e6b89;
+  --frozen-soft: #e6eef4;
+  --graph-line: rgba(20, 19, 17, 0.5);
+  --watch: #6e6a60;
+  --watch-soft: #eeebe3;
+  --ring: #2f6bd8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink-900);
+  font-family: var(--display-font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+input,
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* Brief boot placeholder shown while the initial status loads. */
+.boot {
+  height: 100vh;
+  background: var(--bg);
+}
+
+/* Draggable window chrome. The strip lets the user move the frameless window;
+   interactive children opt back out with no-drag. macOS traffic lights overlay
+   the left edge (titleBarStyle: hiddenInset). */
+.titlebar {
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+/* Reserves space for the macOS traffic lights (drawn by the OS via hiddenInset). */
+.titlebar-inset {
+  width: 64px;
+  flex: none;
+}
+.titlebar-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.titlebar-net {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-700);
+  letter-spacing: 0.02em;
+}
+.titlebar-net-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.titlebar-name {
+  font-size: 12px;
+  color: var(--ink-500);
+  letter-spacing: 0.02em;
+}
+.titlebar-btn {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--ink-500);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.titlebar-btn:hover {
+  background: var(--well);
+}
+.titlebar button,
+.titlebar a,
+.titlebar input {
+  -webkit-app-region: no-drag;
+}
+
+/* ===========================================================================
+   UI kit — component styles. The reusable primitives in src/renderer/ui apply
+   these classes; interactive states (hover/active/focus) live here because
+   inline styles can't express them. Colors come only from the tokens above.
+   =========================================================================== */
+
+/* Keyboard focus ring. Pointer focus stays quiet thanks to :focus-visible. */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* Layout */
+.screen {
+  position: relative;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.screen--center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 32px;
+}
+.screen--center > * {
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+/* Shared content header (above each in-shell pane): page title + subtitle on the
+   left, page-level actions (Refresh) on the right. */
+.content-head {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 22px 32px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.content-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink-900);
+  font-family: var(--display-font);
+  letter-spacing: -0.02em;
+}
+.content-subtitle {
+  font-size: 13px;
+  color: var(--ink-500);
+  margin-top: 4px;
+}
+.content-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-s);
+  background: transparent;
+  color: var(--ink-700);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.content-refresh:hover {
+  background: var(--well);
+}
+.content-refresh svg {
+  color: var(--ink-500);
+}
+
+/* Wallet switcher (top-bar): trigger chip + dropdown menu of wallets. */
+.wallet-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 38px;
+  max-width: 220px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-s);
+  background: transparent;
+  color: var(--ink-900);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wallet-switch:hover {
+  background: var(--well);
+}
+.wallet-switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.wallet-switch > svg {
+  color: var(--ink-500);
+  flex: none;
+}
+.wallet-switch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wallet-switch-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 248px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--card-el);
+  border: 1px solid var(--border-s);
+  box-shadow: var(--shadow);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: qpop 0.16s ease;
+}
+.wallet-switch-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-900);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.wallet-switch-item:hover {
+  background: var(--well);
+}
+.wallet-switch-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--well);
+  color: var(--ink-700);
+}
+.wallet-switch-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+/* Elevated picker/menu row (contacts popover, etc.). */
+.picker-row:hover {
+  background: var(--well);
+}
+
+/* Tokens-panel row: a full-width button that opens Send for that token. */
+.tokrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+.tokrow:hover {
+  background: var(--well);
+}
+.tokrow-go {
+  display: flex;
+  flex: none;
+  align-items: center;
+  color: var(--ink-500);
+  opacity: 0;
+  transform: translateX(-3px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+.tokrow:hover .tokrow-go {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Inline spinner (broadcasting, deriving). */
+.spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--border-s);
+  border-top-color: var(--primary);
+  animation: qspin 0.8s linear infinite;
+}
+
+/* Smaller inline spinner for use inside buttons (e.g. Max while it computes). */
+.spinner--xs {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  animation-duration: 0.7s;
+}
+
+/* Activity history row: subtle hover to signal it opens the explorer. */
+.activity-row:hover {
+  background: var(--well);
+}
+
+/* Coin-control row hover + the faint edit-label pencil. */
+.coin-row:hover {
+  background: var(--well);
+}
+.coin-pencil {
+  opacity: 0.4;
+}
+.coin-pencil:hover {
+  opacity: 1;
+  background: var(--card-el);
+}
+
+/* Typography */
+.ui-title {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+.ui-subtitle {
+  margin: 9px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-500);
+  line-height: 1.5;
+}
+
+/* Button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn--full {
+  width: 100%;
+}
+.btn--primary {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--primary-h);
+}
+.btn--primary:active:not(:disabled) {
+  background: var(--primary-p);
+}
+.btn--secondary {
+  background: transparent;
+  color: var(--ink-900);
+  border-color: var(--border-s);
+}
+.btn--secondary:hover:not(:disabled) {
+  background: var(--well);
+}
+.btn--ghost {
+  background: transparent;
+  color: var(--ink-500);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--well);
+  color: var(--ink-900);
+}
+
+/* Fields */
+.field-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-700);
+  margin: 0 0 7px;
+}
+.field {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--well);
+  color: var(--ink-900);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.field::placeholder {
+  color: var(--ink-300);
+}
+.field:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+.field--error {
+  border-color: var(--danger);
+}
+.field--success {
+  border-color: var(--success);
+}
+.field--mono {
+  font-family: var(--mono);
+}
+textarea.field {
+  height: auto;
+  padding: 14px;
+  line-height: 1.7;
+  resize: none;
+}
+.field-hint {
+  font-size: 12px;
+  margin-top: 7px;
+  color: var(--ink-500);
+}
+.field-hint--error {
+  color: var(--danger);
+}
+.field-hint--success {
+  color: var(--success);
+}
+.field-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 6px 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--well);
+  transition: border-color 0.15s ease;
+}
+.field-wrap:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+.field-wrap > input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-900);
+  font-size: 14px;
+  outline: none;
+}
+.field-affix-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--ink-500);
+  cursor: pointer;
+}
+.field-affix-btn:hover {
+  color: var(--ink-900);
+  background: var(--card);
+}
+
+/* Checkbox */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--well);
+  cursor: pointer;
+}
+.checkbox-row > input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+.checkbox-row > span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-900);
+}
+
+/* Sidebar nav item (also used for the theme/lock controls in the footer). */
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 11px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-700);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+/* Icon (the leading span) is muted by default, primary when the item is active. */
+.nav-item > span {
+  color: var(--ink-500);
+}
+.nav-item:hover {
+  background: var(--well);
+  color: var(--ink-900);
+}
+.nav-item[data-active='true'] {
+  background: var(--red-soft);
+  color: var(--ink-900);
+}
+.nav-item[data-active='true'] > span {
+  color: var(--primary);
+}
+.nav-item[data-active='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
+}
+.nav-item[data-collapsed='true'] {
+  justify-content: center;
+}
+
+/* Password strength meter */
+.pwstrength {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.pwstrength-bars {
+  flex: 1;
+  display: flex;
+  gap: 5px;
+}
+.pwstrength-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border-s);
+}
+.pwstrength-bar[data-on='true'][data-tone='danger'] {
+  background: var(--danger);
+}
+.pwstrength-bar[data-on='true'][data-tone='warning'] {
+  background: var(--warning);
+}
+.pwstrength-bar[data-on='true'][data-tone='success'] {
+  background: var(--success);
+}
+.pwstrength-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-500);
+}
+.pwstrength-label[data-tone='danger'] {
+  color: var(--danger);
+}
+.pwstrength-label[data-tone='warning'] {
+  color: var(--warning);
+}
+.pwstrength-label[data-tone='success'] {
+  color: var(--success);
+}
+
+/* Button size variants. cta (onboarding/unlock) = 48px/radius 11 with a solid
+   disabled state (well/ink-300, not dimmed); sm = compact 38px secondary rows. */
+.btn--cta {
+  height: 48px;
+  border-radius: 11px;
+}
+.btn--cta:disabled {
+  opacity: 1;
+  background: var(--well);
+  color: var(--ink-300);
+}
+.btn--sm {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Toggle switch (46×26 track, 20px white knob). */
+.switch {
+  width: 46px;
+  height: 26px;
+  flex: none;
+  padding: 3px;
+  border: none;
+  border-radius: 999px;
+  background: var(--border-s);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  transition: background 0.16s ease;
+  -webkit-app-region: no-drag;
+}
+.switch[data-on='true'] {
+  background: var(--primary);
+  justify-content: flex-end;
+}
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.switch-knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* Segmented control on a --well track; the active segment lifts to --card. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--well);
+  border-radius: 12px;
+}
+.segmented-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--ink-500);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 9px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.segmented-btn[data-active='true'] {
+  background: var(--card);
+  color: var(--ink-900);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* Pill / badge. data-tone selects the token pair. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill[data-tone='pq'] {
+  color: var(--pq);
+  background: var(--pq-soft);
+  font-weight: 700;
+}
+.pill[data-tone='frozen'] {
+  color: var(--frozen);
+  background: var(--frozen-soft);
+}
+.pill[data-tone='watch'] {
+  color: var(--watch);
+  background: var(--watch-soft);
+  font-weight: 700;
+}
+.pill[data-tone='warning'] {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 13%, transparent);
+}
+.pill[data-tone='success'] {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+.pill[data-tone='neutral'] {
+  color: var(--ink-500);
+  background: var(--well);
+}
+
+/* Modal: fixed full-window backdrop + centered elevated card. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 8, 6, 0.5);
+}
+.modal-card {
+  background: var(--card-el);
+  border: 1px solid var(--border-s);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: qpop 0.16s ease;
+}
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 18px 20px 14px;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-900);
+  font-family: var(--display-font);
+  letter-spacing: -0.01em;
+}
+.modal-sub {
+  font-size: 12.5px;
+  color: var(--ink-500);
+  margin-top: 3px;
+}
+.modal-close {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--ink-500);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.modal-close:hover {
+  background: var(--well);
+}
+.modal-body {
+  padding: 0 20px 4px;
+}
+.modal-foot {
+  display: flex;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+/* Animations. */
+@keyframes qslide {
+  from {
+    transform: translateX(18px);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes qpop {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes qspin {
+  to {
+    transform: rotate(360deg);
+  }
+}

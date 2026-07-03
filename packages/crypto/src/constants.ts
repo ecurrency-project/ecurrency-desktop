@@ -1,0 +1,89 @@
+// Network-level chain constants.
+//
+// BRAND FILE: like the node's QBitcoin::Const, brand branches edit these
+// values in place (see docs/branding-migration-plan.md). The common base
+// carries the QBitcoin network parameters.
+
+/** Which network an object lives on. */
+export type Network = 'mainnet' | 'testnet';
+
+/**
+ * Signature algorithm. The protocol allows multiple algorithms per
+ * address — the byte in the siglist tells the verifier which one to
+ * use.
+ */
+export type Algorithm = 'ecdsa' | 'schnorr' | 'falcon512';
+
+/**
+ * Address magic prefix. Prepended to the scripthash before Base58Check
+ * encoding the address. NOTE: the prefix length varies per network (the
+ * QBitcoin testnet uses 3 bytes) — never assume a fixed length; use
+ * `ADDR_MAGIC[network].length`.
+ */
+export const ADDR_MAGIC: Record<Network, Uint8Array> = {
+  mainnet: new Uint8Array([0x13, 0x9d]),
+  testnet: new Uint8Array([0x04, 0x73, 0x89]),
+};
+
+/**
+ * One-byte WIF version prefix for serializing private keys (Bitcoin-
+ * compatible). The node wraps Falcon-512 keys in the SAME envelope with a
+ * 2178-byte payload (private ‖ public) — see wif.ts.
+ */
+export const WIF_VERSION: Record<Network, number> = {
+  mainnet: 0x80,
+  testnet: 0xef,
+};
+
+/**
+ * Address-shape regular expressions per network. Useful as a *fast
+ * pre-filter* before doing the full Base58Check decode.
+ *
+ * Each network matches two shapes:
+ *   - Classical (HASH160-based): bq… (35 chars) / btq… (36 chars)
+ *   - Post-quantum (HASH256-based): 3u[H-K]… (52) / 3ua[2-4]… (53)
+ *
+ * The character classes are the EXACT reachable ranges, computed from
+ * the magic bytes: base58(magic ‖ hash ‖ checksum) over all hashes spans
+ * bqM…–bqk… / 3uHA…–3uK7… on mainnet and btqR…–btqp… / 3ua2…–3ua4… on
+ * testnet. Matches the node's ADDRESS_RE / ADDRESS_TESTNET_RE.
+ */
+export const ADDRESS_REGEX: Record<Network, RegExp> = {
+  mainnet:
+    /^(?:bq[1-9A-HJ-NP-Za-km-z]{33}|3u[H-K][1-9A-HJ-NP-Za-km-z]{49})$/,
+  testnet:
+    /^(?:btq[1-9A-HJ-NP-Za-km-z]{33}|3ua[2-4][1-9A-HJ-NP-Za-km-z]{49})$/,
+};
+
+/**
+ * Numeric algorithm IDs used in the byte that prefixes signatures inside
+ * a siglist. Matches the `CRYPT_ALGO_*` constants in the node.
+ */
+export const ALGO_ID: Record<Algorithm, number> = {
+  ecdsa: 1,
+  schnorr: 2,
+  falcon512: 129, // 0x80 (postquantum bit) | 1
+};
+
+/** Bit flag marking algorithms as post-quantum. */
+export const ALGO_POSTQUANTUM_BIT = 0x80;
+
+/** True if `algo` has the post-quantum bit set in its numeric ID. */
+export function isPostQuantum(algo: Algorithm): boolean {
+  return (ALGO_ID[algo] & ALGO_POSTQUANTUM_BIT) !== 0;
+}
+
+/** Atomic units per coin — `100_000_000` (1 coin = 10⁸ atomic, like satoshis). */
+export const DENOMINATOR = 100_000_000;
+
+/**
+ * SIGHASH types accepted by the protocol. The wallet only ever emits
+ * `SIGHASH_ALL`. Other modes are listed for completeness so decoders /
+ * verifiers can reject them explicitly.
+ */
+export const SIGHASH = {
+  ALL: 1,
+  NONE: 2,
+  SINGLE: 3,
+  ANYONECANPAY: 0x80, // flag, combined with one of the above
+} as const;
