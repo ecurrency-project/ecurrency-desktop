@@ -4,9 +4,9 @@
 #
 # NOT for public distribution — releases use electron-builder.yml plus a
 # Developer ID signature + notarization. Build with: pnpm dist:mac:test
-appId: org.qbitcoin.wallet.desktop
-productName: QBitcoin Wallet
-copyright: Copyright © 2026 QBitcoin
+appId: org.ecurrency.wallet.desktop
+productName: eCurrency Wallet
+copyright: Copyright © 2026 eCurrency
 
 directories:
   output: release
@@ -21,7 +21,7 @@ mac:
   target:
     - dmg
   category: public.app-category.finance
-  artifactName: QBitcoin-Wallet-${version}-${arch}-test.${ext}
+  artifactName: eCurrency-Wallet-${version}-${arch}-test.${ext}
   # Ad-hoc signature ("-"): required so the arm64 build will launch at all
   # (a fully unsigned arm64 binary is rejected by the kernel). No certificate
   # or Apple account needed.

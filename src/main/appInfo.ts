@@ -7,7 +7,7 @@
 // "disappear" otherwise). These constants are presentation only.
 
 /** Human-readable product name for menu items and dialogs. */
-export const PRODUCT_NAME = 'QBitcoin Wallet'
+export const PRODUCT_NAME = 'eCurrency Wallet'
 
 /** Brand website for Help → Learn More; null hides the item. */
-export const HOMEPAGE: string | null = null
+export const HOMEPAGE: string | null = 'https://ecurrency.org'
