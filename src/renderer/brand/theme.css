@@ -10,20 +10,21 @@
    near-black / white reads better on that fill — a light accent needs a dark
    label, and the two brands legitimately differ here.
 
-   The common base ships a deliberately unbranded steel accent: any vivid colour
-   here would read as somebody's brand. */
+   eCurrency's ramp is the shipped one, unchanged: these values were the app's
+   palette before the accent became a brand file, and they are dark enough to
+   carry a white label in both themes. */
 :root {
-  --primary: #6d8ea8;
-  --primary-h: #5e7f98;
-  --primary-p: #507089;
-  --primary-soft: #0b283c;
-  --on-primary: #131311;
+  --primary: #ca4545;
+  --primary-h: #b83737;
+  --primary-p: #a32d2d;
+  --primary-soft: #3a1a1f;
+  --on-primary: #ffffff;
 }
 
 [data-theme="light"] {
-  --primary: #5c7a92;
-  --primary-h: #4e6b83;
-  --primary-p: #436077;
-  --primary-soft: #e5f2fb;
+  --primary: #a32d2d;
+  --primary-h: #8a2424;
+  --primary-p: #771e1e;
+  --primary-soft: #fcebeb;
   --on-primary: #ffffff;
 }

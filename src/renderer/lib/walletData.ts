@@ -236,7 +236,7 @@ export function useAddressPlaceholder(): string {
 // Mainnet keeps the historical key (shipped installs must not lose their
 // persisted sync target); testnet gets a suffixed key so the two chains'
 // heights never mix.
-const NODE_TIP_KEY = 'wallet.tipHeight'
+const NODE_TIP_KEY = 'ecr.tipHeight'
 function nodeTipKey(): string {
   return buildNetwork === 'testnet' ? `${NODE_TIP_KEY}.testnet` : NODE_TIP_KEY
 }

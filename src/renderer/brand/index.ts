@@ -11,15 +11,15 @@
 export interface BrandConfig {
   /**
    * Ticker shown next to amounts, per NATIVE network the wallet runs on —
-   * e.g. "QBT" on mainnet but "tQBT" on testnet, so test coins are never
+   * e.g. "ECR" on mainnet but "tECR" on testnet, so test coins are never
    * mistaken for real ones. Read it through `useAssetLabel()` (walletData),
    * never by indexing this record with a hardcoded network.
    */
   assetLabel: Readonly<Record<'mainnet' | 'testnet', string>>
-  /** Human-readable coin/network name, e.g. "QBitcoin". The chain's name is
+  /** Human-readable coin/network name, e.g. "eCurrency". The chain's name is
    *  the same on both networks — the network is shown separately. */
   assetName: string
-  /** Product name shown in the titlebar and onboarding, e.g. "QBitcoin Wallet". */
+  /** Product name shown in the titlebar and onboarding, e.g. "eCurrency Wallet". */
   productName: string
   /** Onboarding subtitle line. */
   tagline: string
@@ -54,14 +54,18 @@ export interface BrandConfig {
   } | null
 }
 
-// Neutral stub — brand branches override these values in their own stack.
 export const brand: BrandConfig = {
-  assetLabel: { mainnet: 'COIN', testnet: 'tCOIN' },
-  assetName: 'Blockchain',
-  productName: 'Wallet',
-  tagline: "A quantum-safe home for your coins. Let's set up your wallet.",
-  explorerTxUrl: null,
-  addressPlaceholder: { mainnet: 'address…', testnet: 'address…' },
-  nodeRestPort: 9557,
+  assetLabel: { mainnet: 'ECR', testnet: 'tECR' },
+  assetName: 'eCurrency',
+  productName: 'eCurrency Wallet',
+  tagline: "A quantum-safe home for your eCurrency. Let's set up your wallet.",
+  explorerTxUrl: 'https://ecrscan.io/tx/',
+  // Both address shapes the chain accepts, per network: classical (HASH160,
+  // 35 chars) and post-quantum (HASH256, 52). Prefixes match the chain
+  // profile's addressRegex, i.e. the node's ADDRESS_RE / ADDRESS_TESTNET_RE.
+  addressPlaceholder: { mainnet: 'EC… or 26…', testnet: 'Et… or 2A…' },
+  nodeRestPort: 9668,
+  // eCurrency has no Bitcoin-upgrade path (its upgrade ran on the legacy
+  // chain, handled by the browser plugin) — the Convert screen stays hidden.
   upgrade: null,
 }
