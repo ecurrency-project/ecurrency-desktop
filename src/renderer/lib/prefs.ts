@@ -8,7 +8,7 @@ import { useCallback, useSyncExternalStore } from 'react'
 
 type Listener = () => void
 
-const ADVANCED_KEY = 'wallet.advancedMode'
+const ADVANCED_KEY = 'ecr.advancedMode'
 
 function readAdvanced(): boolean {
   try {
