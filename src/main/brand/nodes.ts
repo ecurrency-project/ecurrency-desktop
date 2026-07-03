@@ -5,10 +5,19 @@ import { nodesFor, type Network, type NodeEndpoint } from '@qbtc/chain'
 // list lives here and is handed to the chain client at startup.
 //
 // BRAND FILE: the endpoint list is a brand value — each brand branch fills in
-// its own public nodes. The common base ships none (the network may not be
-// launched yet); the wallet then requires a self-hosted node in Settings.
+// its own public nodes. eCurrency ships the project's public Esplora node on
+// mainnet; there is no public testnet node (testing runs against production
+// nodes), so a testnet profile needs a self-hosted node in Settings.
 export const DEFAULT_NODES: readonly NodeEndpoint[] = [
-  // Brand branches append their public Esplora / JSON-RPC nodes here.
+  {
+    name: 'eCurrency.org',
+    url: 'https://api.ecurrency.org',
+    protocol: 'esplora',
+    network: 'mainnet',
+    operator: 'eCurrency Project',
+    priority: 1,
+  },
+  // Future community-run Esplora / JSON-RPC nodes append here.
 ]
 
 /** The bundled endpoints serving `network`, sorted by priority. */
