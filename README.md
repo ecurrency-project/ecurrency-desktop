@@ -1,15 +1,11 @@
-# QBitcoin Wallet — Desktop (multibrand common base)
+# qecurrency Wallet — Desktop
 
-A non-custodial desktop wallet built with Electron. Keys are generated and
-stored locally and never leave the machine. Supports post-quantum (Falcon-512)
-signatures alongside classical secp256k1. Runs on macOS, Windows, and Linux
-from one codebase.
+A non-custodial desktop wallet for the eCurrency (ECR) network, built with
+Electron. Keys are generated and stored locally and never leave the machine.
+Supports post-quantum (Falcon-512) signatures alongside classical secp256k1.
+Runs on macOS, Windows, and Linux from one codebase.
 
-> This is the **common** branch — the brand-neutral base every brand branch is
-> rebased on top of. It carries the QBitcoin chain parameters and stub
-> branding, and is not shipped to users. Brand branches override the marked
-> BRAND FILEs (chain constants, `src/renderer/brand/`, packaging) in their own
-> commit stacks and are what releases are built from.
+> Early development. The app builds and runs; not all flows are implemented yet.
 
 ## Architecture in one line
 
@@ -102,7 +98,7 @@ On a Windows machine (PowerShell), the steps are identical:
 ```powershell
 corepack enable
 pnpm install
-pnpm dist:win        # → release\<productName>-<version>-setup.exe
+pnpm dist:win        # → release\qecurrency Wallet-<version>-setup.exe
 ```
 
 If you only need to run/test (not produce an installer), `pnpm build` then

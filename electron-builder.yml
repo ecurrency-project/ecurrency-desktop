@@ -2,16 +2,16 @@
 # macOS code signing + notarization (Developer ID) and Windows Authenticode
 # signing are both wired below, and both are gated on credentials supplied via
 # env at build time.
-appId: org.qbitcoin.wallet.desktop
-productName: QBitcoin Wallet
-copyright: Copyright © 2026 QBitcoin
+appId: org.ecurrency.wallet.desktop
+productName: eCurrency Wallet
+copyright: Copyright © 2026 eCurrency
 
 # Update feed for electron-updater. Each release, the artifacts and the generated
 # latest-*.yml are uploaded to this HTTPS folder on the site; the installed app
 # reads it to discover and verify updates (SHA512 from the yml + code signature).
 publish:
   provider: generic
-  url: https://qbitcoin.net/download # TBD until the network launches
+  url: https://ecurrency.org/download
 
 directories:
   output: release
@@ -27,7 +27,7 @@ mac:
     - dmg
     - zip
   category: public.app-category.finance
-  artifactName: QBitcoin-Wallet-${version}-${arch}.${ext}
+  artifactName: eCurrency-Wallet-${version}-${arch}.${ext}
   # Developer ID code signing + notarization. Credentials come from env at build
   # time (see docs/signing-macos.md):
   #   CSC_LINK / CSC_KEY_PASSWORD   — Developer ID Application .p12 (CI only; on a
@@ -46,16 +46,15 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: QBitcoin-Wallet-${version}-setup.${ext}
+  artifactName: eCurrency-Wallet-${version}-setup.${ext}
   signtoolOptions:
     sign: ./build/sign-windows.cjs
     signingHashAlgorithms:
       - sha256
-    # publisherName is a BRAND VALUE, set in each brand's packaging commit:
-    # electron-updater verifies the downloaded installer's signature against it,
-    # and with a custom sign hook there is no certificate file for
-    # electron-builder to read the common name from. Left unset here, an update
-    # would install without that check.
+    # electron-updater checks a downloaded update's signature against this name,
+    # and a custom sign hook leaves electron-builder no certificate to read it
+    # from. Byte-for-byte the certificate subject.
+    publisherName: eCurrency Foundation
 
 nsis:
   oneClick: false
@@ -66,4 +65,4 @@ linux:
   target:
     - AppImage
   category: Finance
-  artifactName: QBitcoin-Wallet-${version}-${arch}.${ext}
+  artifactName: eCurrency-Wallet-${version}-${arch}.${ext}
