@@ -29,10 +29,7 @@ import { indicesFor, type WalletMeta } from './meta'
 //    scheme ids are accepted — scanning needs no scheme knowledge, and a
 //    descriptor may come from a newer wallet.
 
-// BRAND VALUE: the kind tag is persisted inside exported descriptors, so a
-// brand must never change it once shipped (existing exports would stop
-// importing). Brand branches set their own tag.
-export const WATCH_DESCRIPTOR_KIND = 'qbt-watch'
+export const WATCH_DESCRIPTOR_KIND = 'ecr-watch'
 /** The version new exports are written at. Both versions are accepted on import. */
 export const WATCH_DESCRIPTOR_VERSION = 2
 
