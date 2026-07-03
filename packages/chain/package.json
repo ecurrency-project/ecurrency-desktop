@@ -1,0 +1,27 @@
+{
+  "name": "@qbitcoin/chain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Esplora REST client for the wallet — balance, UTXOs, fee estimates, broadcast.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3",
+    "vitest": "3.0.5"
+  }
+}

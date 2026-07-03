@@ -1,0 +1,31 @@
+# Unsigned / ad-hoc macOS build for INTERNAL TESTING ONLY (no Apple Developer
+# account). Produces a .dmg testers open via System Settings → Privacy & Security
+# → "Open Anyway" (or: xattr -dr com.apple.quarantine "/Applications/<app>.app").
+#
+# NOT for public distribution — releases use electron-builder.yml plus a
+# Developer ID signature + notarization. Build with: pnpm dist:mac:test
+appId: org.qbitcoin.wallet.desktop
+productName: QBitcoin Wallet
+copyright: Copyright © 2026 QBitcoin
+
+directories:
+  output: release
+  buildResources: resources
+
+# electron-vite compiles the app into out/ before packaging.
+files:
+  - out/**/*
+  - package.json
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.finance
+  artifactName: ${productName}-${version}-${arch}-test.${ext}
+  # Ad-hoc signature ("-"): required so the arm64 build will launch at all
+  # (a fully unsigned arm64 binary is rejected by the kernel). No certificate
+  # or Apple account needed.
+  identity: "-"
+  # Not notarizing, so don't enforce the hardened runtime — otherwise ad-hoc
+  # signing trips library validation against Electron's pre-signed framework.
+  hardenedRuntime: false
