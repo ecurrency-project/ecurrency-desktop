@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_NODES, defaultNodesFor } from '../../../src/main/brand/nodes'
 
-// BRAND TEST: the common base ships no public nodes; brand branches replace
-// the emptiness assertions with "at least one endpoint per network" in their
-// own stack. The shape invariants hold for every brand.
+// BRAND TEST: pins this brand's bundled nodes; the shape invariants hold for
+// every brand.
 describe('bundled nodes', () => {
-  it('ships none on the common base', () => {
-    expect(DEFAULT_NODES).toEqual([])
-    expect(defaultNodesFor('mainnet')).toEqual([])
+  it("ships the project's public mainnet node and no testnet node", () => {
+    expect(defaultNodesFor('mainnet').map((n) => n.url)).toEqual(['https://api.ecurrency.org'])
     expect(defaultNodesFor('testnet')).toEqual([])
+    for (const n of DEFAULT_NODES) expect(n.operator).toBe('eCurrency Project')
   })
 
   it('lists well-formed HTTPS endpoints, priority-sorted per network', () => {

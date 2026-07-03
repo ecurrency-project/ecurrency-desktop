@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { SendService, type SendDeps } from '../../src/main/wallet/SendService'
 import type { GatheredUtxo } from '../../src/main/wallet/spendable'
 
-const RECIPIENT = 'bqRS2bzC6BuG9Qm7hyMXJYzy295UEgZZCEX'
-const CHANGE = 'bqTGk8SVFzBouz3cLF7fuwA6gzad2MzGhwf'
+const RECIPIENT = 'ECQFhYJWVgDyNdsFWdpeG5w2G5it7Cwh4Gd'
+const CHANGE = 'ECS6R4kofUWX9D9k8uansU69vwE2tvRhNkP'
 
 function harness(utxos: GatheredUtxo[], frozen: ReadonlySet<string> = new Set()) {
   const calls = { sign: 0, broadcast: [] as string[], advance: 0 }
@@ -82,7 +82,7 @@ describe('SendService', () => {
     await expect(svc.confirmSend()).rejects.toThrow(/No transaction/)
   })
 
-  it('builds a token send (token amount + native fee) and confirms it', async () => {
+  it('builds a token send (token amount + native ECR fee) and confirms it', async () => {
     const { svc, calls } = harness([utxo('e1', 0, 1_000_000n), tutxo('t1', 0, 100n)])
     const preview = await svc.buildTokenSend(TOKEN, RECIPIENT, 30n)
     expect(preview.tokenId).toBe(TOKEN)
@@ -94,8 +94,8 @@ describe('SendService', () => {
     expect(calls.advance).toBeGreaterThanOrEqual(1) // change branch(es) advanced
   })
 
-  it('refuses a token send when there is nothing native to pay the fee', async () => {
-    const { svc } = harness([tutxo('t1', 0, 100n)]) // token UTXO only, no native value
+  it('refuses a token send when there is no ECR to pay the fee', async () => {
+    const { svc } = harness([tutxo('t1', 0, 100n)]) // token UTXO only, no native ECR
     await expect(svc.buildTokenSend(TOKEN, RECIPIENT, 30n)).rejects.toThrow(/network fee|balance/i)
   })
 
