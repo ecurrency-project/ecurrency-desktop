@@ -33,7 +33,7 @@ test('export a descriptor, add it as a watch wallet, see it blocked, then remove
     const exported = page.getByRole('textbox', { name: 'Watch descriptor', exact: true })
     await expect(exported).toBeVisible({ timeout: 30_000 }) // Falcon address derivation is WASM
     const descriptor = await exported.inputValue()
-    expect(descriptor).toContain('qbt-watch')
+    expect(descriptor).toContain('ecr-watch')
     await page.getByRole('dialog').locator('.modal-close').click()
 
     // Accounts → add it back as a watch-only wallet.

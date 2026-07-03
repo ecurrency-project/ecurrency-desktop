@@ -5,7 +5,7 @@ import type { UnsignedTx } from '../../src/main/wallet/buildTx'
 import { buildSignedTransaction, signUnsignedTx, toCryptoTransaction } from '../../src/main/wallet/signTx'
 
 const MASTER = masterKeyFromSeed(mnemonicToSeed('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'))
-const RECIPIENT = 'bqRS2bzC6BuG9Qm7hyMXJYzy295UEgZZCEX'
+const RECIPIENT = 'ECQFhYJWVgDyNdsFWdpeG5w2G5it7Cwh4Gd'
 
 function unsigned(): UnsignedTx {
   return {

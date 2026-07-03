@@ -10,6 +10,7 @@ import {
   getPublicKey,
   masterKeyFromSeed,
   mnemonicToSeed,
+  nativePathFor,
   toHex,
   validateProfile,
   type Network,
@@ -25,16 +26,19 @@ import {
   DERIVATION_SCHEMES,
   DOWNGRADE,
   encodeWif,
+  legacySchemes,
   META_V1_SCHEME_ID,
   nativePath,
   nativePqPath,
+  requireScheme,
+  schemeById,
   sighashCommitsTokenId,
   signedMessageDigest,
   signedMessagePreimage,
   UPGRADE,
   validateAddress,
 } from '../../../src/main/brand/crypto'
-import { PROFILE } from '../../../src/main/brand/profile'
+import { PROFILE, SCHEME_ECR_PLACEHOLDER, SCHEME_ECR_V2 } from '../../../src/main/brand/profile'
 
 // Pins of this build's chain profile and of the facade bound to it. BRAND
 // TEST: brand branches replace the expected values in their own stack — the
@@ -54,28 +58,47 @@ describe('chain profile', () => {
   })
 
   it('pins the network constants', () => {
-    expect(toHex(PROFILE.addrMagic.mainnet)).toBe('139d')
-    expect(toHex(PROFILE.addrMagic.testnet)).toBe('047389')
+    expect(toHex(PROFILE.addrMagic.mainnet)).toBe('076e')
+    expect(toHex(PROFILE.addrMagic.testnet)).toBe('07d1')
     expect(PROFILE.wifVersion).toEqual({ mainnet: 0x80, testnet: 0xef })
-    expect(PROFILE.addressRegex.mainnet.source).toBe('^(?:bq[1-9A-HJ-NP-Za-km-z]{33}|3u[H-K][1-9A-HJ-NP-Za-km-z]{49})$')
-    expect(PROFILE.addressRegex.testnet.source).toBe('^(?:btq[1-9A-HJ-NP-Za-km-z]{33}|3ua[2-4][1-9A-HJ-NP-Za-km-z]{49})$')
+    expect(PROFILE.addressRegex.mainnet.source).toBe('^(?:EC[1-9A-HJ-NP-Za-km-z]{33}|26[k-n][1-9A-HJ-NP-Za-km-z]{49})$')
+    expect(PROFILE.addressRegex.testnet.source).toBe('^(?:Et[1-9A-HJ-NP-Za-km-z]{33}|2A[4-6][1-9A-HJ-NP-Za-km-z]{49})$')
   })
 
   it('pins the derivation schemes, ids and coin_types byte-exact', () => {
-    expect(DERIVATION_SCHEMES.map((s) => [s.id, s.status])).toEqual([['qbt-v1-placeholder', 'active']])
-    expect(activeScheme().id).toBe('qbt-v1-placeholder')
-    expect(META_V1_SCHEME_ID).toBe('qbt-v1-placeholder')
-    for (const network of NETWORKS) expect(coinTypeFor(activeScheme(), network)).toBe(1)
-    expect(nativePath(0, 0, 'mainnet')).toBe("m/44'/1'/0'/0/0")
+    // v2 (8128, the registered SLIP-0044 number; BIP-44 testnet coin_type 1)
+    // is active; v1 (999 everywhere) is the frozen legacy scheme that shipped
+    // wallets hold funds on. Both stay registered forever, ids byte-exact:
+    // the ids are persisted in wallet storage and the paths hold user funds.
+    expect(DERIVATION_SCHEMES.map((s) => [s.id, s.status])).toEqual([
+      ['ecr-v2-slip44', 'active'],
+      ['ecr-v1-placeholder', 'legacy'],
+    ])
+    expect(activeScheme()).toBe(SCHEME_ECR_V2)
+    expect(legacySchemes()).toEqual([SCHEME_ECR_PLACEHOLDER])
+    expect(schemeById('ecr-v1-placeholder')).toBe(SCHEME_ECR_PLACEHOLDER)
+    expect(requireScheme('ecr-v2-slip44')).toBe(SCHEME_ECR_V2)
+    expect(schemeById('ecr-v3-official')).toBeUndefined()
+    // Pre-per-scheme blobs (v1 meta, v1 watch descriptors) belong to v1.
+    expect(META_V1_SCHEME_ID).toBe('ecr-v1-placeholder')
+
+    expect(coinTypeFor(SCHEME_ECR_V2, 'mainnet')).toBe(8128)
+    expect(coinTypeFor(SCHEME_ECR_V2, 'testnet')).toBe(1)
+    expect(coinTypeFor(SCHEME_ECR_PLACEHOLDER, 'mainnet')).toBe(999)
+    expect(coinTypeFor(SCHEME_ECR_PLACEHOLDER, 'testnet')).toBe(999)
+
+    expect(nativePath(0, 0, 'mainnet')).toBe("m/44'/8128'/0'/0/0")
     expect(nativePath(1, 2, 'testnet', 1)).toBe("m/44'/1'/1'/1/2")
-    expect(nativePqPath(0, 0, 'mainnet')).toBe("m/512'/1'/0'/0'/0'")
+    expect(nativePqPath(0, 0, 'mainnet')).toBe("m/512'/8128'/0'/0'/0'")
     expect(nativePqPath(1, 2, 'testnet', 1)).toBe("m/512'/1'/1'/1'/2'")
+    expect(nativePathFor(SCHEME_ECR_PLACEHOLDER, 0, 0, 'mainnet')).toBe("m/44'/999'/0'/0/0")
+    expect(nativePathFor(SCHEME_ECR_PLACEHOLDER, 0, 0, 'testnet')).toBe("m/44'/999'/0'/0/0")
   })
 
   it('pins the HKDF labels and the signed-message magic', () => {
-    expect(PROFILE.falconHdInfo).toBe('qbt/pq/falcon512/v1')
-    expect(PROFILE.appDataInfo).toBe('qbt/app-data/v1')
-    expect(PROFILE.messageMagic).toBe('QBitcoin Signed Message:\n')
+    expect(PROFILE.falconHdInfo).toBe('ecr/pq/falcon512/v1')
+    expect(PROFILE.appDataInfo).toBe('ecr/app-data/v1')
+    expect(PROFILE.messageMagic).toBe('eCurrency Signed Message:\n')
   })
 
   it('has no conversion flow and commits the token id since genesis', () => {
@@ -93,19 +116,24 @@ describe('bound facade — goldens from the test mnemonic and the key 0x11…11'
     { classical: string; pqFromScripthash: string; wif: string; falconSeed: string; falconAddress: string }
   > = {
     mainnet: {
-      classical: 'bqhMerNwWjSQcUzcQJKuvNE9rZV4iHS3rZd',
-      pqFromScripthash: '3uJULrkN8zHk2thCUZ16qUH5gxmUC5qiPe2LYi57dyjX5y7P5KL8',
+      classical: 'ECgBKnhFvDm7qi6kCxo2suAD6W8Uavhq5VB',
+      pqFromScripthash: '26mYVdXUY6JJhLyfh32DKZ54JhzhRWVPHMWSmnsecWtfUoSDeUf9',
       wif: '5HwoXVkHoRM8sL2KmNRS217n1g8mPPBomrY7yehCuXC1115WWsh',
-      falconSeed: 'b6dea86561688767533b3b5946927c774223ada26fdd10d8811876177c5cb569b1f0d37757a7fc07e4371afc91a56ff3',
-      falconAddress: '3uJzZBGsAheR4MGjgL1JENwaTBGDbVxPCEKJvAZpmcshrsKBUsYM',
+      // THESE VALUES FREEZE THE SCHEME: the seed at m/512'/8128'/0'/0'/0' is
+      // the input to Falcon keygen — if it moves, PQ funds stop being
+      // recoverable from their mnemonic. A failure is a derivation break to
+      // revert, not a pin to update. (The v1 branch is pinned in
+      // ./falconHd.test.ts.)
+      falconSeed: '0ff9de10602fbe7bc6c41bef89ef2d24a6bd98a1da7ca1cd99449ac3e562411ff59eaa1dd91cd286c999b593624709d5',
+      falconAddress: '26kn6raUwMh11AUUHaUX6wJCxwvdC84Yje5wtDfruzo12Rhm6fsr',
     },
     testnet: {
-      classical: 'btqmvJWPpoj26LsmeuDGGo3PWdo3JXCtpt9Q',
-      pqFromScripthash: '3ua3op5gua7tCsm7umHUtVKpawHVkomT3Cgvu6b7Pe2iYgqQAgz8u',
+      classical: 'EtWe3GSmSWczag1YnPL1Rua9yp4yyGfvYdv',
+      pqFromScripthash: '2A5zC6UuhTRG7hCCWnQfEypQyNHfWsCoyFnTRwhkMvmKsf5iD7gZ',
       wif: '91iS7EZqPeRGqPXcPiKLtbfjfLVUYYj17oQ54H3iFFw3n1UmZSS',
-      // Same leaf as mainnet: the placeholder scheme uses coin_type 1 on both networks.
-      falconSeed: 'b6dea86561688767533b3b5946927c774223ada26fdd10d8811876177c5cb569b1f0d37757a7fc07e4371afc91a56ff3',
-      falconAddress: '3ua4L2QDQbqEsuDhSy4V5tEV5hVzWDBZi1HDsU3c6mfrjTjepWgBy',
+      // BIP-44 testnet coin_type 1 under the eCurrency HKDF label.
+      falconSeed: '6619df4ab5620c2689921715ee3628f8e856f9fed20ce759ab3a2f69a5f0f1cc57da869f63524fa4d810f0f794a27b8f',
+      falconAddress: '2A4zqLHoc3GDW6QR1G7rLGfoeoDjLHB2WXPNRFeyuDYmArDoVoid',
     },
   }
 
@@ -148,13 +176,13 @@ describe('bound facade — goldens from the test mnemonic and the key 0x11…11'
   }
 
   it('derives the app-data key under the profile label', () => {
-    expect(toHex(deriveAppDataKey(SEED))).toBe('0809cd8f5fb580cc204124343208e0fb45b9b29a62080a568f4976c2bc565694')
+    expect(toHex(deriveAppDataKey(SEED))).toBe('c88718ab07103545c41d9f1de1ea2d76396fc7cb14d89c44f7b0665335cbb69c')
   })
 
   it('hashes signed messages under the profile magic', () => {
-    // varint(25-byte magic) = 0x19 — never a valid tx_type, so a message
+    // varint(26-byte magic) = 0x1a — never a valid tx_type, so a message
     // digest can't collide with a transaction sighash.
-    expect(signedMessagePreimage('Hello, chain!')[0]).toBe(0x19)
-    expect(toHex(signedMessageDigest('Hello, chain!'))).toBe('de998dafe328aefb1c7605baf1817241aa4fe9d871a75aa8f7c73c9310a8eae3')
+    expect(signedMessagePreimage('Hello, chain!')[0]).toBe(0x1a)
+    expect(toHex(signedMessageDigest('Hello, chain!'))).toBe('a6c8e6ebf2cb0646fe4c70d19bb48698ff5239e77339177091aba95d82e4ba6d')
   })
 })

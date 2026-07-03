@@ -3,10 +3,10 @@ import { DUST_ATOMIC, InsufficientFundsError, InsufficientTokensError, buildSend
 
 // Real classical mainnet addresses (derived from the abandon…about vector), so
 // decodeAddress accepts them and produces 20-byte scripthashes.
-const RECIPIENT = 'bqRS2bzC6BuG9Qm7hyMXJYzy295UEgZZCEX'
-const CHANGE = 'bqTGk8SVFzBouz3cLF7fuwA6gzad2MzGhwf'
+const RECIPIENT = 'ECQFhYJWVgDyNdsFWdpeG5w2G5it7Cwh4Gd'
+const CHANGE = 'ECS6R4kofUWX9D9k8uansU69vwE2tvRhNkP'
 // A real mainnet Falcon (PQ) address — decodeAddress yields a 32-byte scripthash.
-const PQ_CHANGE = '3uJPaK1HRrNyfpykzmCWHpKXWWFFS5uUKFFmk6YfrZhqv7driav9'
+const PQ_CHANGE = '26mTj5nPpxPYLHGEDFDcmu7W8FUUfWZ9CxjsyBMCq6rzJwz4wnkD'
 
 function utxo(txid: string, vout: number, value: bigint, index = 0): SpendableUtxo {
   return { txid, vout, value, chain: 0, index, algo: 'ecdsa' }
@@ -235,8 +235,8 @@ describe('buildTokenSend', () => {
   it('builds token in/out + token change + native fee change', () => {
     const built = buildTokenSend(base)
     expect(built.unsigned.tokenHash).toBe(TOKEN)
-    expect(built.unsigned.inputs).toHaveLength(2) // one token UTXO + one native UTXO
-    expect(built.unsigned.outputs).toHaveLength(3) // recipient token, token change, native change
+    expect(built.unsigned.inputs).toHaveLength(2) // one token UTXO + one ECR UTXO
+    expect(built.unsigned.outputs).toHaveLength(3) // recipient token, token change, ECR change
     expect(built.unsigned.outputs[0]).toMatchObject({ valueAtomic: '0' })
     expect(built.unsigned.outputs[0]!.data).toBeDefined() // TRANSFER payload
     expect(built.tokenChangeAtomic).toBe(70n)
@@ -253,7 +253,7 @@ describe('buildTokenSend', () => {
     expect(() => buildTokenSend({ ...base, tokenUtxos: [tutxo('t1', 0, 10n)] })).toThrow(InsufficientTokensError)
   })
 
-  it('throws when there is nothing native to pay the fee', () => {
+  it('throws when there is no ECR to pay the fee', () => {
     expect(() => buildTokenSend({ ...base, nativeUtxos: [] })).toThrow(InsufficientFundsError)
   })
 })

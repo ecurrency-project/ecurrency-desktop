@@ -29,7 +29,7 @@ describe('AddressService', () => {
     const a = await service.getReceiveAddress()
     const b = await service.getReceiveAddress()
     expect(a).toBe(b)
-    expect(a.startsWith('bq')).toBe(true)
+    expect(a.startsWith('EC')).toBe(true)
   })
 
   it('advances and persists the index on a new address', async () => {
