@@ -140,13 +140,15 @@ describe('planConvert', () => {
   })
 
   it('folds a sub-dust remainder into the fee', async () => {
+    // fee with change at 3 sat/vB = (10 + 149 + 34 + 43 + 34) * 3 = 810;
+    // remainder = 3_001_200 − 3_000_000 − 810 = 390 ≤ dust → folded.
     const { service } = harness({
-      utxosByAddress: { [ADDR0]: [utxo('aa'.repeat(32), 0, 3_001_500n)] },
+      utxosByAddress: { [ADDR0]: [utxo('aa'.repeat(32), 0, 3_001_200n)] },
     })
     const plan = await service.planConvert({ mode: 'amount', amountSat: 3_000_000n })
     expect(plan.changeValue).toBe(0n)
     expect(plan.foldedChange).toBe(true)
-    expect(plan.fee).toBe(1_500n) // the whole remainder
+    expect(plan.fee).toBe(1_200n) // the whole remainder
   })
 
   it('enforces the minimum and the balance', async () => {
