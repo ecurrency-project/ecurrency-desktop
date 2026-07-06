@@ -4,9 +4,10 @@ import { brand } from '../brand'
 import { WalletSwitcher } from '../components/WalletSwitcher'
 import { wallet } from '../lib/wallet'
 import { hydrateFromSnapshot, loadWallets, nodeDotColor, refreshAll, useNodeStatus } from '../lib/walletData'
-import { ActivityIcon, AtomIcon, ChevDownIcon, CoinsIcon, LockIcon, ReceiveIcon, RefreshIcon, SendIcon, SettingsIcon, Sidebar, WalletIcon, type NavItem } from '../ui'
+import { ActivityIcon, AtomIcon, BoltIcon, ChevDownIcon, CoinsIcon, LockIcon, ReceiveIcon, RefreshIcon, SendIcon, SettingsIcon, Sidebar, WalletIcon, type NavItem } from '../ui'
 import { Activity } from './Activity'
 import { Coins } from './Coins'
+import { Convert } from './Convert'
 import { Receive } from './Receive'
 import { Send } from './Send'
 import { Settings } from './Settings'
@@ -15,7 +16,7 @@ import { WalletHome } from './WalletHome'
 // The unlocked app shell: a persistent sidebar + a content area that swaps panes.
 // Replaces the earlier full-screen-with-back-button model. `preselected` carries
 // coins chosen on the Coins pane into the Send pane.
-type Nav = 'wallet' | 'send' | 'receive' | 'activity' | 'coins' | 'settings'
+type Nav = 'wallet' | 'send' | 'receive' | 'convert' | 'activity' | 'coins' | 'settings'
 
 const NAV: NavItem[] = [
   { id: 'wallet', label: 'Wallet', icon: <WalletIcon /> },
@@ -26,10 +27,15 @@ const NAV: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
 ]
 
+// The Convert entry appears only when the brand ships an upgrade flow AND main
+// confirms it for the active wallet (seed + consensus params) — see below.
+const CONVERT_NAV: NavItem = { id: 'convert', label: 'Convert', icon: <BoltIcon /> }
+
 const PAGE_META: Record<Nav, { title: string; subtitle: string }> = {
   wallet: { title: 'Wallet', subtitle: `Your ${brand.assetName} balance and recent activity` },
   send: { title: 'Send', subtitle: `Send ${brand.assetLabel} to any address` },
   receive: { title: 'Receive', subtitle: 'Share your address to get paid' },
+  convert: { title: 'Convert', subtitle: `Turn ${brand.upgrade?.sourceCoinLabel ?? 'BTC'} into ${brand.assetLabel}` },
   activity: { title: 'Activity', subtitle: 'Every transaction on this wallet' },
   coins: { title: 'Coins', subtitle: 'Manage your unspent outputs (UTXOs)' },
   settings: { title: 'Settings', subtitle: 'Manage your wallet and security' },
@@ -53,6 +59,27 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
     void loadWallets()
   }, [])
 
+  // Convert is double-gated: the brand must ship an upgrade flow (static) and
+  // main must confirm it for the active wallet (seed wallets only).
+  const [convertEnabled, setConvertEnabled] = useState(false)
+  useEffect(() => {
+    if (brand.upgrade === null) return
+    let alive = true
+    wallet
+      .upgradeInfo()
+      .then((info) => {
+        if (alive) setConvertEnabled(info.enabled)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+  const navItems = convertEnabled ? [...NAV.slice(0, 3), CONVERT_NAV, ...NAV.slice(3)] : NAV
+  useEffect(() => {
+    if (!convertEnabled && nav === 'convert') setNav('wallet')
+  }, [convertEnabled, nav])
+
   function go(to: Nav): void {
     // A plain navigation to Send (sidebar or hero) always means a native coin send.
     if (to === 'send') {
@@ -69,6 +96,9 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
       break
     case 'receive':
       pane = <Receive />
+      break
+    case 'convert':
+      pane = <Convert />
       break
     case 'activity':
       pane = <Activity />
@@ -148,7 +178,7 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
-      <Sidebar items={NAV} active={nav} onNavigate={(id) => go(id as Nav)} footer={footer} collapsed={collapsed} />
+      <Sidebar items={navItems} active={nav} onNavigate={(id) => go(id as Nav)} footer={footer} collapsed={collapsed} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
         <header className="content-head">
           <div style={{ flex: 1, minWidth: 0 }}>

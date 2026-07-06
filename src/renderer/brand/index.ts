@@ -24,6 +24,16 @@ export interface BrandConfig {
   addressPlaceholder: string
   /** Default REST port of a self-hosted node, used in Settings hints. */
   nodeRestPort: number
+  /** Source-chain upgrade flow (e.g. BTC→native conversion), or null when
+   *  this brand has none — the Convert screen and nav entry stay hidden.
+   *  Consensus values live in the crypto package (UPGRADE); this is only
+   *  the renderer-facing presentation. */
+  upgrade: {
+    /** Ticker of the source chain being converted from, e.g. "BTC". */
+    sourceCoinLabel: string
+    /** Explorer tx URL prefix of the SOURCE chain, or null. */
+    sourceExplorerTxUrl: string | null
+  } | null
 }
 
 // Neutral stub — brand branches override these values in their own stack.
@@ -35,4 +45,5 @@ export const brand: BrandConfig = {
   explorerTxUrl: null,
   addressPlaceholder: 'address…',
   nodeRestPort: 9557,
+  upgrade: null,
 }
