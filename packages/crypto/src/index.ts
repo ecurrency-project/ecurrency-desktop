@@ -211,6 +211,25 @@ export {
   type DecodedWif,
 } from './wif';
 
+// Bitcoin transaction construction (upgrade flow: staging → lock spend).
+export {
+  BTC_RBF_SEQUENCE,
+  BTC_SIGHASH_ALL,
+  btcSighashAll,
+  btcTxid,
+  estimateBtcP2pkhTxSize,
+  scriptBtcOpReturn,
+  scriptBtcP2pkh,
+  scriptBtcP2pkhForPubkey,
+  serializeBtcTx,
+  signBtcP2pkhSpend,
+  type BtcOutPoint,
+  type BtcTransaction,
+  type BtcTxInput,
+  type BtcTxOutput,
+  type UnsignedBtcSpend,
+} from './btc/tx';
+
 // Falcon-512 (WASM-backed once built).
 export {
   FALCON512_PRIVATE_KEY_BYTES,
