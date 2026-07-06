@@ -211,6 +211,18 @@ export {
   type DecodedWif,
 } from './wif';
 
+// Bitcoin addresses (upgrade flow: staging display + Return BTC decode).
+export {
+  bech32Encode,
+  btcP2pkhAddress,
+  btcP2pkhAddressForPubkey,
+  decodeBtcAddress,
+  toWords,
+  type BtcAddressKind,
+  type BtcNetwork,
+  type DecodedBtcAddress,
+} from './btc/address';
+
 // Bitcoin transaction construction (upgrade flow: staging → lock spend).
 export {
   BTC_RBF_SEQUENCE,
