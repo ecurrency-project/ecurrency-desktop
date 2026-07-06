@@ -75,10 +75,12 @@ export {
   ALGO_POSTQUANTUM_BIT,
   DENOMINATOR,
   SIGHASH,
+  UPGRADE,
   WIF_VERSION,
   isPostQuantum,
   type Algorithm,
   type Network,
+  type UpgradeChainConfig,
 } from './constants';
 
 // Script construction.

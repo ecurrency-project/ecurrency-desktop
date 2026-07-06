@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
+import { BTC_ESPLORA_DEFAULTS, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
+import { decodeAddress, decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
-import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
+import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
 import { deriveClassicalAddress, deriveFalconAddress } from '../wallet/addresses'
 import { AddressService, type WalletVault } from '../wallet/AddressService'
 import { createSeedAddressSource, type AddressSource } from '../wallet/AddressSource'
@@ -23,6 +23,8 @@ import { SendService } from '../wallet/SendService'
 import { signUnsignedTx } from '../wallet/signTx'
 import { SnapshotStore } from '../wallet/snapshot'
 import { gatherFromActive, type GatheredUtxo } from '../wallet/spendable'
+import { UpgradeService, type ConvertPlan, type ConvertRequest } from '../wallet/UpgradeService'
+import { UpgradeMetaStore } from '../wallet/upgradeStore'
 import { buildWatchDescriptor, encodeWatchDescriptor } from '../wallet/watchDescriptor'
 import { createWatchAddressSource, parseWatchInput, WatchSourceStore } from '../wallet/watchSource'
 import { basicAuthHeader, NodeAuthStore, type NodeAuth } from './nodeAuth'
@@ -52,6 +54,8 @@ interface WalletSession {
   readonly chain: ChainOps
   readonly send: SendOps
   readonly coins: CoinOps
+  /** BTC→native upgrade flow; null on brands without it or key-free wallets. */
+  readonly upgrade: UpgradeService | null
   /** Warm discovery + the spend pool in the background (on unlock or after a switch). */
   readonly prewarm: () => void
   /** Drop cached/held state (on lock, or when this session is replaced). */
@@ -126,6 +130,8 @@ export function createWalletCore(): WalletCore {
     let addressSource: AddressSource
     let addresses: AddressOps
     let seedAddrSvc: AddressService | null = null
+    // Upgrade flow: needs seed derivation + a brand upgrade config.
+    let upgradeSvc: UpgradeService | null = null
     // Master-key provider for a seed wallet (used by its address source, AddressService
     // and signing). Null for watch and key wallets.
     let seedMasterKey: (() => Promise<HDKey>) | null = null
@@ -152,6 +158,14 @@ export function createWalletCore(): WalletCore {
       const keyVault: WalletVault = { getMasterKey, on: (l) => vault.on(l) }
       const source = createSeedAddressSource({ getMasterKey, metaStore, network: NETWORK })
       seedAddrSvc = new AddressService(keyVault, metaStore, NETWORK)
+      if (UPGRADE !== null) {
+        upgradeSvc = new UpgradeService(
+          keyVault,
+          new UpgradeMetaStore(new FileVaultStorage(wf('upgrade.json')), vault),
+          new BtcEsploraClient({ baseUrl: BTC_ESPLORA_DEFAULTS[0]! }),
+          UPGRADE,
+        )
+      }
       addressSource = source
       addresses = seedAddrSvc
       resetSource = () => {
@@ -311,7 +325,7 @@ export function createWalletCore(): WalletCore {
       bustGather()
     }
 
-    return { addresses, chain: chainOps, send, coins, prewarm, reset }
+    return { addresses, chain: chainOps, send, coins, upgrade: upgradeSvc, prewarm, reset }
   }
 
   let unlocked = false
@@ -649,6 +663,27 @@ export function createWalletCore(): WalletCore {
     }
   })
 
+  // Upgrade ops helpers: the flow exists only when the brand configures it AND
+  // the active wallet can derive (seed). Amount strings are parsed here so the
+  // service sees bigint; bigints are stringified on the way out.
+  const requireUpgrade = (): UpgradeService => {
+    if (active.upgrade === null) throw new Error('BTC upgrade is not available for this wallet.')
+    return active.upgrade
+  }
+  const parseSat = (s: string): bigint => {
+    if (!/^\d+$/.test(s)) throw new Error('Enter a valid satoshi amount.')
+    return BigInt(s)
+  }
+  const parseConvertRequest = (req: UpgradeConvertRequest): ConvertRequest =>
+    req.mode === 'all' ? { mode: 'all' } : { mode: 'amount', amountSat: parseSat(req.amountSat) }
+  const planView = (p: ConvertPlan): UpgradePlanView => ({
+    sendValueSat: p.sendValue.toString(),
+    feeSat: p.fee.toString(),
+    changeValueSat: p.changeValue.toString(),
+    feeRate: p.feeRate,
+    foldedChange: p.foldedChange,
+  })
+
   // The orchestrator is built once; its read/write ops delegate to whichever session
   // is active, so a wallet switch needs no IPC re-wiring.
   const orchestrator = new VaultOrchestrator({
@@ -684,6 +719,40 @@ export function createWalletCore(): WalletCore {
     wallets: { list: listWallets, add: addWatchWallet, addSeed: addSeedWallet, inspectKey, addKey: addKeyWallet, restore: restoreFromMnemonic, switch: switchWallet, rename: renameWallet, remove: removeWallet, exportDescriptor: exportWatchDescriptor },
     sweep: { scan: sweepScan, build: sweepBuild, confirm: sweepConfirm, cancel: disposeSweep },
     node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, setTor, status: nodeStatus },
+    upgrade: {
+      info: async () => ({ enabled: active.upgrade !== null }),
+      status: async () => {
+        const s = await requireUpgrade().status()
+        return {
+          stagingAddress: s.stagingAddress,
+          stagingIndex: s.stagingIndex,
+          confirmedBalanceSat: s.confirmedBalance.toString(),
+          pendingBalanceSat: s.pendingBalance.toString(),
+          episodes: s.episodes.map((e) => ({
+            txid: e.txid,
+            lockValueSat: e.lockValue.toString(),
+            destScripthashHex: e.destScripthashHex,
+            confirmed: e.confirmed,
+            ...(e.blockHeight !== undefined ? { blockHeight: e.blockHeight } : {}),
+          })),
+        }
+      },
+      plan: async (req) => planView(await requireUpgrade().planConvert(parseConvertRequest(req))),
+      convert: async (req, destAddress) => {
+        // The credit goes to a NATIVE address of this chain — decode it here so
+        // the service stays chain-agnostic (it only sees the scripthash).
+        if (!validateAddress(destAddress, NETWORK)) {
+          throw new Error('Enter a valid address of this chain to receive the credit.')
+        }
+        const { scripthash } = decodeAddress(destAddress)
+        const { txid } = await requireUpgrade().convert(parseConvertRequest(req), scripthash)
+        return { txid }
+      },
+      returnBtc: async (destBtcAddress) => {
+        const res = await requireUpgrade().returnAll(destBtcAddress)
+        return { txid: res.txid, valueSat: res.value.toString(), feeSat: res.fee.toString() }
+      },
+    },
   })
 
   return { vault, orchestrator }

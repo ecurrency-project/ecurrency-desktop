@@ -77,6 +77,27 @@ export function isPostQuantum(algo: Algorithm): boolean {
 export const DENOMINATOR = 100_000_000;
 
 /**
+ * Parameters of the BTC→native upgrade path (the chain credits native
+ * coins for BTC paid into its lock script). BRAND VALUE: null when the
+ * brand has no Bitcoin upgrade; brand branches fill in their consensus
+ * values. The wallet's upgrade flow stays dormant while this is null.
+ */
+export interface UpgradeChainConfig {
+  /** Exact scriptPubKey (hex) of the chain's BTC lock/freeze output. */
+  readonly lockScriptHex: string;
+  /** Smallest convertible amount, in satoshi. */
+  readonly minConvertValue: bigint;
+  /** Below this, change folds into the fee instead of creating an output. */
+  readonly dustLimit: bigint;
+  /** Fee-estimate confirmation target, in blocks. */
+  readonly feeTargetBlocks: number;
+  /** sat/vB used when the fee oracle has no usable answer. */
+  readonly fallbackFeeRate: number;
+}
+
+export const UPGRADE: UpgradeChainConfig | null = null;
+
+/**
  * SIGHASH types accepted by the protocol. The wallet only ever emits
  * `SIGHASH_ALL`. Other modes are listed for completeness so decoders /
  * verifiers can reject them explicitly.

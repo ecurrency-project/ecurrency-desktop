@@ -23,6 +23,11 @@ import {
   type TxDetail,
   type UtxoView,
   type WalletSnapshot,
+  type UpgradeConvertResult,
+  type UpgradeInfo,
+  type UpgradePlanView,
+  type UpgradeReturnResult,
+  type UpgradeStatusView,
   type VaultRequest,
   type VaultStatus,
   type WalletApi,
@@ -98,6 +103,11 @@ const api: WalletApi = {
   clearOwnNode: () => request<NodeSettings>({ type: 'node.clearOwn' }),
   setTor: (enabled) => request<NodeSettings>({ type: 'node.setTor', enabled }),
   nodeStatus: () => request<NodeStatus>({ type: 'node.status' }),
+  upgradeInfo: () => request<UpgradeInfo>({ type: 'upgrade.info' }),
+  upgradeStatus: () => request<UpgradeStatusView>({ type: 'upgrade.status' }),
+  upgradePlan: (req) => request<UpgradePlanView>({ type: 'upgrade.plan', req }),
+  upgradeConvert: (req, destAddress) => request<UpgradeConvertResult>({ type: 'upgrade.convert', req, destAddress }),
+  upgradeReturn: (destBtcAddress) => request<UpgradeReturnResult>({ type: 'upgrade.return', destBtcAddress }),
   onStatusChanged: (listener) => {
     const handler = (_event: unknown, status: VaultStatus): void => listener(status)
     ipcRenderer.on(WALLET_EVENT_CHANNEL, handler)
