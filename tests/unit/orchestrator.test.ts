@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { VaultOrchestrator, type AddressOps, type ChainOps, type CoinOps, type ContactOps, type MnemonicTools, type NodeOps, type SendOps, type SweepOps, type VaultLike, type WalletOps } from '../../src/main/vault/orchestrator'
+import { VaultOrchestrator, type AddressOps, type ChainOps, type CoinOps, type ContactOps, type MnemonicTools, type NodeOps, type SendOps, type SweepOps, type UpgradeOps, type VaultLike, type WalletOps } from '../../src/main/vault/orchestrator'
 import type { VaultStatus } from '../../src/shared/protocol'
 
 const SEED = 'SEED-MUST-NEVER-CROSS-THE-BRIDGE'
@@ -117,11 +117,27 @@ const NODE: NodeOps = {
   status: async () => ({ url: 'https://api.example.org', reachable: true, chain: 'main', blockHeight: 1, syncing: false, latencyMs: 5 }),
 }
 
+const UPGRADE_OPS: UpgradeOps = {
+  info: async () => ({ enabled: false }),
+  status: async () => {
+    throw new Error('BTC upgrade is not available for this wallet.')
+  },
+  plan: async () => {
+    throw new Error('BTC upgrade is not available for this wallet.')
+  },
+  convert: async () => {
+    throw new Error('BTC upgrade is not available for this wallet.')
+  },
+  returnBtc: async () => {
+    throw new Error('BTC upgrade is not available for this wallet.')
+  },
+}
+
 function make() {
   const vault = new FakeVault()
   return {
     vault,
-    orch: new VaultOrchestrator({ vault, mnemonic: TOOLS, addresses: ADDRESSES, chain: CHAIN, send: SEND, coins: COINS, contacts: CONTACTS, wallets: WALLETS, sweep: SWEEP, node: NODE }),
+    orch: new VaultOrchestrator({ vault, mnemonic: TOOLS, addresses: ADDRESSES, chain: CHAIN, send: SEND, coins: COINS, contacts: CONTACTS, wallets: WALLETS, sweep: SWEEP, node: NODE, upgrade: UPGRADE_OPS }),
   }
 }
 
@@ -215,6 +231,14 @@ describe('VaultOrchestrator', () => {
     const { orch, vault } = make()
     expect(await orch.handle({ type: 'vault.noteActivity' })).toEqual({ ok: true, value: undefined })
     expect(vault.activityPings).toBe(1)
+  })
+
+  it('routes upgrade requests; the capability probe works while others surface the error', async () => {
+    const { orch } = make()
+    expect(await orch.handle({ type: 'upgrade.info' })).toEqual({ ok: true, value: { enabled: false } })
+    const res = await orch.handle({ type: 'upgrade.status' })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error.message).toMatch(/not available/)
   })
 
   it('reveals the mnemonic only with the right password', async () => {

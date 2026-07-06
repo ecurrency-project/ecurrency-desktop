@@ -18,6 +18,12 @@ import {
   type TokenSendPreview,
   type TxDetail,
   type WalletSnapshot,
+  type UpgradeConvertRequest,
+  type UpgradeConvertResult,
+  type UpgradeInfo,
+  type UpgradePlanView,
+  type UpgradeReturnResult,
+  type UpgradeStatusView,
   type UtxoView,
   type VaultRequest,
   type VaultStatus,
@@ -131,6 +137,16 @@ export interface NodeOps {
   status(): Promise<NodeStatus>
 }
 
+// BTC→native upgrade operations. Implemented in main; on brands without an
+// upgrade path every method except `info` rejects.
+export interface UpgradeOps {
+  info(): Promise<UpgradeInfo>
+  status(): Promise<UpgradeStatusView>
+  plan(req: UpgradeConvertRequest): Promise<UpgradePlanView>
+  convert(req: UpgradeConvertRequest, destAddress: string): Promise<UpgradeConvertResult>
+  returnBtc(destBtcAddress: string): Promise<UpgradeReturnResult>
+}
+
 export interface OrchestratorDeps {
   readonly vault: VaultLike
   readonly mnemonic: MnemonicTools
@@ -142,6 +158,7 @@ export interface OrchestratorDeps {
   readonly wallets: WalletOps
   readonly sweep: SweepOps
   readonly node: NodeOps
+  readonly upgrade: UpgradeOps
 }
 
 // Handles every wallet request from the renderer. Vault-lifecycle requests are
@@ -274,6 +291,16 @@ export class VaultOrchestrator {
           return ok(await this.deps.node.setTor(request.enabled))
         case 'node.status':
           return ok(await this.deps.node.status())
+        case 'upgrade.info':
+          return ok(await this.deps.upgrade.info())
+        case 'upgrade.status':
+          return ok(await this.deps.upgrade.status())
+        case 'upgrade.plan':
+          return ok(await this.deps.upgrade.plan(request.req))
+        case 'upgrade.convert':
+          return ok(await this.deps.upgrade.convert(request.req, request.destAddress))
+        case 'upgrade.return':
+          return ok(await this.deps.upgrade.returnBtc(request.destBtcAddress))
         default:
           return fail(new Error(`Unknown request: ${String((request as { type: unknown }).type)}`))
       }

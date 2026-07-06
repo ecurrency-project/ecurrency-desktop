@@ -88,6 +88,58 @@ export type VaultRequest =
   | { readonly type: 'node.clearOwn' }
   | { readonly type: 'node.setTor'; readonly enabled: boolean }
   | { readonly type: 'node.status' }
+  | { readonly type: 'upgrade.info' }
+  | { readonly type: 'upgrade.status' }
+  | { readonly type: 'upgrade.plan'; readonly req: UpgradeConvertRequest }
+  | { readonly type: 'upgrade.convert'; readonly req: UpgradeConvertRequest; readonly destAddress: string }
+  | { readonly type: 'upgrade.return'; readonly destBtcAddress: string }
+
+// --- BTC→native upgrade (dormant unless the brand configures it) ---
+// Satoshi amounts are strings across the bridge, like atomic amounts.
+
+/** Capability probe: whether this build/wallet offers the upgrade flow. */
+export interface UpgradeInfo {
+  readonly enabled: boolean
+}
+
+export type UpgradeConvertRequest =
+  | { readonly mode: 'all' }
+  | { readonly mode: 'amount'; readonly amountSat: string }
+
+export interface UpgradeEpisodeView {
+  readonly txid: string
+  readonly lockValueSat: string
+  /** Destination scripthash committed via OP_RETURN (hex); null = fallback credit. */
+  readonly destScripthashHex: string | null
+  readonly confirmed: boolean
+  readonly blockHeight?: number
+}
+
+export interface UpgradeStatusView {
+  readonly stagingAddress: string
+  readonly stagingIndex: number
+  readonly confirmedBalanceSat: string
+  readonly pendingBalanceSat: string
+  readonly episodes: readonly UpgradeEpisodeView[]
+}
+
+export interface UpgradePlanView {
+  readonly sendValueSat: string
+  readonly feeSat: string
+  readonly changeValueSat: string
+  readonly feeRate: number
+  readonly foldedChange: boolean
+}
+
+export interface UpgradeConvertResult {
+  readonly txid: string
+}
+
+export interface UpgradeReturnResult {
+  readonly txid: string
+  readonly valueSat: string
+  readonly feeSat: string
+}
 
 // --- Chain views (the read models the renderer renders) ---
 // Atomic amounts are strings here: bigint is correct inside main but doesn't
@@ -451,6 +503,16 @@ export interface WalletApi {
   setTor(enabled: boolean): Promise<NodeSettings>
   /** Live status of the active endpoint (height, syncing, latency) for the indicator. */
   nodeStatus(): Promise<NodeStatus>
+  /** Whether the BTC→native upgrade flow is available (brand + wallet kind). */
+  upgradeInfo(): Promise<UpgradeInfo>
+  /** Staging address, balances and episode history of the upgrade flow. Requires unlocked. */
+  upgradeStatus(): Promise<UpgradeStatusView>
+  /** Price a conversion (full or a fixed satoshi amount) without touching keys. */
+  upgradePlan(req: UpgradeConvertRequest): Promise<UpgradePlanView>
+  /** Build, sign and broadcast the conversion; credits the given NATIVE address. */
+  upgradeConvert(req: UpgradeConvertRequest, destAddress: string): Promise<UpgradeConvertResult>
+  /** Send the whole staging balance back to an arbitrary Bitcoin address. */
+  upgradeReturn(destBtcAddress: string): Promise<UpgradeReturnResult>
   /** Subscribe to status changes pushed from main; returns an unsubscribe fn. */
   onStatusChanged(listener: (status: VaultStatus) => void): () => void
 }
