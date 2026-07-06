@@ -44,8 +44,10 @@ export interface DecodedBtcAddress {
  * a validation message.
  */
 export function decodeBtcAddress(address: string, network: BtcNetwork): DecodedBtcAddress {
-  const lower = address.toLowerCase();
-  if (lower.startsWith(`${BECH32_HRP[network]}1`)) {
+  // Route anything that LOOKS like bech32 for a known Bitcoin hrp through
+  // the segwit decoder, so a wrong-network paste gets the helpful
+  // "different network" error instead of a base58 complaint.
+  if (/^(bc|tb)1/i.test(address)) {
     return decodeSegwit(address, network);
   }
   return decodeLegacy(address, network);
