@@ -30,3 +30,12 @@ export {
   type Utxo,
 } from './types';
 export type { TransportOptions } from './transport';
+export {
+  BTC_ESPLORA_DEFAULTS,
+  BtcEsploraClient,
+  type BtcEsploraConfig,
+  type BtcHistoryOutput,
+  type BtcHistoryTx,
+  type BtcTxStatus,
+  type BtcUtxo,
+} from './btc/BtcEsploraClient';
