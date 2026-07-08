@@ -21,7 +21,7 @@ mac:
   target:
     - dmg
   category: public.app-category.finance
-  artifactName: ${productName}-${version}-${arch}-test.${ext}
+  artifactName: QBitcoin-Wallet-${version}-${arch}-test.${ext}
   # Ad-hoc signature ("-"): required so the arm64 build will launch at all
   # (a fully unsigned arm64 binary is rejected by the kernel). No certificate
   # or Apple account needed.

@@ -1,8 +1,9 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, session, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, Menu, session, shell, type WebContents } from 'electron'
 import { setSchnorrEnabled } from '@qbitcoin/crypto'
 import { WALLET_EVENT_CHANNEL, type VaultStatus } from '../shared/protocol'
 import { registerWalletIpc } from './ipc/router'
+import { buildAppMenu } from './menu'
 import { createWalletCore } from './vault'
 import { configureFalconWasm } from './wallet/falconWasm'
 import { initAutoUpdater } from './updater'
@@ -76,6 +77,10 @@ app
   .whenReady()
   .then(() => {
     applyProductionCsp()
+
+    // Brand-labelled application menu (the default one would show the raw
+    // package name in About/Hide/Quit items).
+    Menu.setApplicationMenu(buildAppMenu())
 
     // Apply window/navigation hardening to every webContents. Registered before
     // any window exists so it catches the main window's contents too.

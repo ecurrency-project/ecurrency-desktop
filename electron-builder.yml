@@ -27,7 +27,7 @@ mac:
     - dmg
     - zip
   category: public.app-category.finance
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: QBitcoin-Wallet-${version}-${arch}.${ext}
   # Developer ID code signing + notarization. Credentials come from env at build
   # time (see docs/signing-macos.md):
   #   CSC_LINK / CSC_KEY_PASSWORD   — Developer ID Application .p12 (CI only; on a
@@ -44,7 +44,7 @@ mac:
 win:
   target:
     - nsis
-  artifactName: ${productName}-${version}-setup.${ext}
+  artifactName: QBitcoin-Wallet-${version}-setup.${ext}
 
 nsis:
   oneClick: false
@@ -55,4 +55,4 @@ linux:
   target:
     - AppImage
   category: Finance
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: QBitcoin-Wallet-${version}-${arch}.${ext}
