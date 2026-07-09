@@ -23,11 +23,14 @@ export function isSafeExternalUrl(url: string): boolean {
 }
 
 // True only for the app's OWN content, which the window is allowed to navigate to:
-// the dev-server origin in development, or a file:// URL in a packaged build (what
-// loadFile produces). Anything else is a navigation away from the app — blocked.
+// the dev-server origin in development, or — in a packaged build — EXACTLY the
+// file:// URL of the bundled index.html (`appFileUrl`, what loadFile produces).
+// Anything else is a navigation away from the app — blocked: a blanket `file:`
+// allowance would let a compromised renderer steer the window onto any local
+// file. Without an `appFileUrl` (not wired), prod falls back to file:-only.
 // The SPA routes client-side (history/hash, which don't fire will-navigate), so in
 // practice legitimate navigations are just the initial load.
-export function isAppNavigation(url: string, opts: { readonly devUrl?: string }): boolean {
+export function isAppNavigation(url: string, opts: { readonly devUrl?: string; readonly appFileUrl?: string }): boolean {
   let target: URL
   try {
     target = new URL(url)
@@ -41,5 +44,12 @@ export function isAppNavigation(url: string, opts: { readonly devUrl?: string })
       return false
     }
   }
-  return target.protocol === 'file:'
+  if (target.protocol !== 'file:') return false
+  if (opts.appFileUrl === undefined) return true
+  try {
+    // Compare pathnames (URL-normalized), ignoring ?query/#hash on the target.
+    return target.pathname === new URL(opts.appFileUrl).pathname
+  } catch {
+    return false
+  }
 }

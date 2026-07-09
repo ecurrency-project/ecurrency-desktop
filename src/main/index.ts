@@ -1,6 +1,8 @@
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, Menu, session, shell, type WebContents } from 'electron'
 import { setSchnorrEnabled } from '@qbitcoin/crypto'
+import { PRODUCTION_CSP } from '../shared/csp'
 import { WALLET_EVENT_CHANNEL, type VaultStatus } from '../shared/protocol'
 import { registerWalletIpc } from './ipc/router'
 import { buildAppMenu } from './menu'
@@ -13,18 +15,23 @@ import { isAppNavigation, isSafeExternalUrl } from './windowSecurity'
 const rendererDevUrl = process.env['ELECTRON_RENDERER_URL']
 const isDev = rendererDevUrl !== undefined
 
-// Packaged builds load the renderer from file:// — pin a strict CSP there. Dev
-// stays open so the Vite dev server and HMR work. The real boundary is the
-// webPreferences below; full hardening is a later phase.
+// The bundled renderer entry — the ONLY file:// URL the window may show, and the
+// only IPC sender main will answer (see hardenWebContents / trustedIpcSender).
+const rendererIndex = join(__dirname, '../renderer/index.html')
+const appFileUrl = pathToFileURL(rendererIndex).href
+
+// Packaged builds pin a strict CSP header. For the file://-loaded renderer the
+// authoritative copy is the <meta> tag baked into index.html at build time
+// (see electron.vite.config.ts — headers don't reliably apply to file://); this
+// header covers any http(s) content in the session. Dev stays open so the Vite
+// dev server and HMR work; the real boundary is the webPreferences below.
 function applyProductionCsp(): void {
   if (isDev) return
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'",
-        ],
+        'Content-Security-Policy': [PRODUCTION_CSP],
       },
     })
   })
@@ -32,7 +39,8 @@ function applyProductionCsp(): void {
 
 // Lock down every webContents (the main window and anything created later): new
 // windows / window.open go to the OS browser (https only) and never open in-app,
-// and the frame can't navigate away from the app's own content. CSP + sandbox +
+// and the frame can't navigate away from the app's own content — in prod that
+// means exactly the bundled index.html, not just any file:// URL. CSP + sandbox +
 // contextIsolation are the primary controls; these close the navigation surface.
 function hardenWebContents(contents: WebContents): void {
   contents.setWindowOpenHandler(({ url }) => {
@@ -40,11 +48,16 @@ function hardenWebContents(contents: WebContents): void {
     return { action: 'deny' }
   })
   contents.on('will-navigate', (event, url) => {
-    if (isAppNavigation(url, { devUrl: rendererDevUrl })) return
+    if (isAppNavigation(url, { devUrl: rendererDevUrl, appFileUrl })) return
     event.preventDefault()
     if (isSafeExternalUrl(url)) void shell.openExternal(url)
   })
 }
+
+// IPC trust predicate: only the app's own top-level document may talk to the
+// wallet channel. Reuses the navigation predicate — the set of frames we would
+// ever load IS the set of frames allowed to speak.
+const trustedIpcSender = (frameUrl: string): boolean => isAppNavigation(frameUrl, { devUrl: rendererDevUrl, appFileUrl })
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -69,7 +82,7 @@ function createWindow(): void {
   if (rendererDevUrl !== undefined) {
     void win.loadURL(rendererDevUrl)
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadFile(rendererIndex)
   }
 }
 
@@ -98,7 +111,7 @@ app
 
     // The Vault lives here, in main — sole owner of the decrypted seed.
     const { vault, orchestrator } = createWalletCore()
-    registerWalletIpc(orchestrator)
+    registerWalletIpc(orchestrator, { isTrustedSender: trustedIpcSender })
 
     // Push status changes to the renderer (notably an autolock 'timeout' lock),
     // so the UI can return to the lock screen without polling.

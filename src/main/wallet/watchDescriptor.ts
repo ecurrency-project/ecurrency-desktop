@@ -1,4 +1,15 @@
-import { decodeAddress, isValidAccountXpub, META_V1_SCHEME_ID, validateAddress, type Network } from '@qbitcoin/crypto'
+import {
+  DERIVATION_SCHEMES,
+  decodeAddress,
+  exportAccountXpubFor,
+  isValidAccountXpub,
+  META_V1_SCHEME_ID,
+  validateAddress,
+  type HDKey,
+  type Network,
+} from '@qbitcoin/crypto'
+import { deriveFalconAddress } from './addresses'
+import { indicesFor, type WalletMeta } from './meta'
 
 // A portable, key-free description of a wallet to watch, carried between machines as
 // a single JSON token. Per derivation scheme it pairs the classical account xpub
@@ -97,6 +108,46 @@ export interface BuildWatchDescriptorOptions {
   readonly schemes: readonly BuildWatchDescriptorSchemeInput[]
   /** Extra indices beyond the issued ones. Defaults to {@link FALCON_EXPORT_LOOKAHEAD}. */
   readonly lookahead?: { readonly receive: number; readonly change: number }
+}
+
+/**
+ * Build the watch descriptor of ONE SEED WALLET from ITS OWN master key and
+ * meta: one section per registry scheme (active first), each with that
+ * scheme's account xpub, Falcon list and issued-index floors.
+ *
+ * This is the single assembly point for "descriptor of a seed wallet" — the
+ * session layer only resolves WHICH master/meta belong to the active wallet
+ * and passes them in. Keeping assembly here (pure, injectable) is what makes
+ * the master↔meta pairing testable: a descriptor built from wallet B's master
+ * must watch B's addresses, never the primary's (regression: the export used
+ * to always read the PRIMARY vault's master key).
+ */
+export async function buildSeedWatchDescriptor(opts: {
+  /** The wallet's OWN master key (primary vault or its imported seed). */
+  readonly master: HDKey
+  /** The same wallet's (per-scheme) issued-index meta. */
+  readonly meta: WalletMeta
+  readonly network: Network
+  readonly label?: string
+  readonly account?: number
+  readonly lookahead?: { readonly receive: number; readonly change: number }
+}): Promise<WatchDescriptorV2> {
+  const { master, meta, network, label, lookahead } = opts
+  const account = opts.account ?? 0
+  return buildWatchDescriptor({
+    network,
+    ...(label !== undefined ? { label } : {}),
+    ...(lookahead !== undefined ? { lookahead } : {}),
+    schemes: DERIVATION_SCHEMES.map((scheme) => {
+      const floors = indicesFor(meta, scheme.id)
+      return {
+        scheme: scheme.id,
+        classicalXpub: exportAccountXpubFor(master, scheme, account),
+        deriveFalcon: (chain: 0 | 1, index: number) => deriveFalconAddress(master, { account, chain, index, network, scheme }),
+        pqFloors: { receive: floors.pqReceiveIndex, change: floors.pqChangeIndex },
+      }
+    }),
+  })
 }
 
 /** Build a (v2) watch descriptor, deriving each scheme's Falcon address list. */

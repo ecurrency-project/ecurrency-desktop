@@ -3,11 +3,11 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { BTC_ESPLORA_DEFAULTS, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { decodeAddress, decodeWif, DERIVATION_SCHEMES, exportAccountXpub, exportAccountXpubFor, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
+import { decodeAddress, decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
 import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
-import { deriveClassicalAddress, deriveFalconAddress } from '../wallet/addresses'
+import { deriveClassicalAddress } from '../wallet/addresses'
 import { AddressService, type WalletVault } from '../wallet/AddressService'
 import { createSeedAddressSource, type AddressSource } from '../wallet/AddressSource'
 import { KeyStore } from '../wallet/keyStore'
@@ -18,14 +18,14 @@ import { ChainService } from '../wallet/ChainService'
 import { CoinService } from '../wallet/CoinService'
 import { CoinMetaStore } from '../wallet/coinMeta'
 import { ContactService } from '../wallet/ContactService'
-import { indicesFor, WalletMetaStore } from '../wallet/meta'
+import { WalletMetaStore } from '../wallet/meta'
 import { SendService } from '../wallet/SendService'
 import { signUnsignedTx } from '../wallet/signTx'
 import { SnapshotStore } from '../wallet/snapshot'
 import { gatherFromActive, type GatheredUtxo } from '../wallet/spendable'
 import { UpgradeService, type ConvertPlan, type ConvertRequest } from '../wallet/UpgradeService'
 import { UpgradeMetaStore } from '../wallet/upgradeStore'
-import { buildWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } from '../wallet/watchDescriptor'
+import { buildSeedWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } from '../wallet/watchDescriptor'
 import { createWatchAddressSource, parseWatchInput, WatchSourceStore } from '../wallet/watchSource'
 import { basicAuthHeader, NodeAuthStore, type NodeAuth } from './nodeAuth'
 import { NodeConfigStore, normalizeNodeUrl, type NodeSettingsStored } from './nodeConfig'
@@ -408,14 +408,22 @@ export function createWalletCore(): WalletCore {
     return listWallets()
   }
 
+  // The master key of a SPECIFIC seed wallet: the primary derives from the Vault,
+  // an imported one from its own sealed seed. Every per-wallet key read outside a
+  // session MUST go through this — reading `vault.getMasterKey()` directly would
+  // silently use the primary wallet's keys for whichever wallet is active.
+  const openSeedMaster = async (id: string): Promise<HDKey> => {
+    if (id === DEFAULT_WALLET_ID) return vault.getMasterKey()
+    const seed = await new SeedStore(new FileVaultStorage(join(walletDir(userData, id), 'seed.json')), vault).load()
+    if (seed === null) throw new Error('Seed for this wallet is missing or could not be opened.')
+    return masterKeyFromSeed(mnemonicToSeed(seed.mnemonic, seed.passphrase))
+  }
+
   // The account xpub of an existing seed wallet (default → primary Vault, else its
   // sealed seed), used to detect a duplicate import. Best-effort: null if unreadable.
   const seedAccountXpub = async (id: string): Promise<string | null> => {
     try {
-      if (id === DEFAULT_WALLET_ID) return exportAccountXpub(vault.getMasterKey(), 0)
-      const seed = await new SeedStore(new FileVaultStorage(join(walletDir(userData, id), 'seed.json')), vault).load()
-      if (seed === null) return null
-      return exportAccountXpub(masterKeyFromSeed(mnemonicToSeed(seed.mnemonic, seed.passphrase)), 0)
+      return exportAccountXpub(await openSeedMaster(id), 0)
     } catch {
       return null
     }
@@ -542,26 +550,15 @@ export function createWalletCore(): WalletCore {
   // Build the active seed wallet's watch descriptor (per scheme: account xpub + its
   // Falcon address list; active scheme first, per the registry order) for sharing
   // with a watch-only install. Requires the wallet unlocked; only a seed wallet has
-  // keys to derive from.
+  // keys to derive from. Master and meta both belong to the ACTIVE wallet — an
+  // imported seed wallet exports ITS OWN descriptor, not the primary's.
   const exportWatchDescriptor = async (): Promise<string> => {
     const id = registry.getActiveId()
     const entry = registry.get(id)
     if (entry?.kind !== 'seed') throw new Error('Only a seed wallet can export a watch descriptor.')
-    const master = vault.getMasterKey()
+    const master = await openSeedMaster(id)
     const meta = await new WalletMetaStore(new FileVaultStorage(join(walletDir(userData, id), 'walletmeta.json')), vault).load()
-    const descriptor = await buildWatchDescriptor({
-      network: NETWORK,
-      label: entry.label,
-      schemes: DERIVATION_SCHEMES.map((scheme) => {
-        const floors = indicesFor(meta, scheme.id)
-        return {
-          scheme: scheme.id,
-          classicalXpub: exportAccountXpubFor(master, scheme, 0),
-          deriveFalcon: (chain: 0 | 1, index: number) => deriveFalconAddress(master, { account: 0, chain, index, network: NETWORK, scheme }),
-          pqFloors: { receive: floors.pqReceiveIndex, change: floors.pqChangeIndex },
-        }
-      }),
-    })
+    const descriptor = await buildSeedWatchDescriptor({ master, meta, network: NETWORK, label: entry.label })
     return encodeWatchDescriptor(descriptor)
   }
 

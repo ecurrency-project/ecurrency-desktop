@@ -1,6 +1,8 @@
-import { addressFromScripthash, exportAccountXpub, masterKeyFromSeed, META_V1_SCHEME_ID } from '@qbitcoin/crypto'
+import { addressFromScripthash, DERIVATION_SCHEMES, exportAccountXpub, exportAccountXpubFor, masterKeyFromSeed, META_V1_SCHEME_ID } from '@qbitcoin/crypto'
 import { describe, expect, it } from 'vitest'
+import type { WalletMeta } from '../../src/main/wallet/meta'
 import {
+  buildSeedWatchDescriptor,
   buildWatchDescriptor,
   descriptorSchemes,
   encodeWatchDescriptor,
@@ -85,6 +87,57 @@ describe('buildWatchDescriptor', () => {
     })
     expect('label' in d).toBe(false)
     await expect(buildWatchDescriptor({ network: 'mainnet', schemes: [] })).rejects.toThrow(/at least one scheme/)
+  })
+})
+
+describe('buildSeedWatchDescriptor', () => {
+  // Real WASM Falcon keygen — keep lookahead at zero so each scheme derives
+  // exactly one receive + one change address.
+  const NO_LOOKAHEAD = { receive: 0, change: 0 }
+  const masterA = masterKeyFromSeed(Uint8Array.from({ length: 64 }, (_, i) => (i * 3 + 7) & 0xff))
+  const masterB = masterKeyFromSeed(Uint8Array.from({ length: 64 }, (_, i) => (i * 11 + 5) & 0xff))
+  const emptyMeta: WalletMeta = { version: 2, schemes: {} }
+
+  it('builds a section per registry scheme from the GIVEN master (active first)', async () => {
+    const d = await buildSeedWatchDescriptor({ master: masterA, meta: emptyMeta, network: 'mainnet', lookahead: NO_LOOKAHEAD })
+    expect(d.version).toBe(2)
+    expect(d.schemes.map((s) => s.scheme)).toEqual(DERIVATION_SCHEMES.map((s) => s.id))
+    for (const [i, scheme] of DERIVATION_SCHEMES.entries()) {
+      expect(d.schemes[i]!.classicalXpub).toBe(exportAccountXpubFor(masterA, scheme, 0))
+    }
+  })
+
+  // Regression: the export used to always read the PRIMARY wallet's master key,
+  // so an imported seed wallet's descriptor silently watched the wrong wallet.
+  // Two masters must produce two entirely disjoint descriptors.
+  it('descriptors of two different masters share nothing (regression: wrong-master export)', async () => {
+    const [a, b] = await Promise.all([
+      buildSeedWatchDescriptor({ master: masterA, meta: emptyMeta, network: 'mainnet', lookahead: NO_LOOKAHEAD }),
+      buildSeedWatchDescriptor({ master: masterB, meta: emptyMeta, network: 'mainnet', lookahead: NO_LOOKAHEAD }),
+    ])
+    const xpubsA = a.schemes.map((s) => s.classicalXpub)
+    const xpubsB = new Set(b.schemes.map((s) => s.classicalXpub))
+    expect(xpubsA.some((x) => xpubsB.has(x))).toBe(false)
+    const falconA = a.schemes.flatMap((s) => [...s.falcon.receive, ...s.falcon.change])
+    const falconB = new Set(b.schemes.flatMap((s) => [...s.falcon.receive, ...s.falcon.change]))
+    expect(falconA.length).toBeGreaterThan(0)
+    expect(falconA.some((addr) => falconB.has(addr))).toBe(false)
+  })
+
+  it("sizes each scheme's Falcon lists from that scheme's OWN meta floors", async () => {
+    const active = DERIVATION_SCHEMES[0]!.id
+    const meta: WalletMeta = {
+      version: 2,
+      schemes: { [active]: { receiveIndex: 0, changeIndex: 0, pqReceiveIndex: 2, pqChangeIndex: 1 } },
+    }
+    const d = await buildSeedWatchDescriptor({ master: masterA, meta, network: 'mainnet', lookahead: NO_LOOKAHEAD })
+    const activeSection = d.schemes.find((s) => s.scheme === active)!
+    expect(activeSection.falcon.receive).toHaveLength(3) // indices 0..2
+    expect(activeSection.falcon.change).toHaveLength(2) // indices 0..1
+    for (const other of d.schemes.filter((s) => s.scheme !== active)) {
+      expect(other.falcon.receive).toHaveLength(1) // untouched scheme: floor 0
+      expect(other.falcon.change).toHaveLength(1)
+    }
   })
 })
 

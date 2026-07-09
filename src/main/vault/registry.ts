@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 // Multi-wallet registry and on-disk layout.
@@ -129,13 +129,20 @@ export class WalletRegistry {
   }
 
   // Read the index, or seed it with the primary wallet. A missing file is the
-  // first launch after the multi-wallet upgrade (or a brand-new install); a corrupt
-  // file falls back the same way rather than blocking startup. The 'default'
-  // directory is where the existing seed was migrated to, or where onboarding will
-  // create it.
+  // first launch after the multi-wallet upgrade (or a brand-new install). A file
+  // that EXISTS but doesn't parse/validate is user data in trouble: it is never
+  // overwritten — the corrupt bytes are set aside (wallets.json.corrupt-<ts>)
+  // and the index is rebuilt by scanning the wallet directories, so imported
+  // wallets (a key wallet's WIF may exist nowhere else!) stay reachable.
   private loadOrInit(): RegistryFile {
     const parsed = this.read()
     if (isValidRegistry(parsed)) return parsed
+    if (existsSync(this.file)) {
+      this.backupCorruptFile()
+      const rebuilt = this.rebuildFromDisk()
+      this.write(rebuilt)
+      return rebuilt
+    }
     const init: RegistryFile = {
       version: REGISTRY_VERSION,
       wallets: [{ id: DEFAULT_WALLET_ID, kind: 'seed', label: 'Main wallet', createdAt: Date.now() }],
@@ -143,6 +150,53 @@ export class WalletRegistry {
     }
     this.write(init)
     return init
+  }
+
+  // Preserve the unreadable index for manual recovery instead of destroying the
+  // only copy. Best-effort: if even the rename fails, rebuilding still proceeds
+  // (write() replaces the file atomically either way).
+  private backupCorruptFile(): void {
+    try {
+      renameSync(this.file, `${this.file}.corrupt-${String(Date.now())}`)
+    } catch {
+      // Nothing more we can do — prefer a working wallet over a preserved corpse.
+    }
+  }
+
+  // Rebuild the index from the on-disk layout: every directory under `wallets/`
+  // whose files identify a wallet kind becomes an entry. Labels are generic —
+  // the user renames them afterwards — but every wallet is reachable again.
+  private rebuildFromDisk(): RegistryFile {
+    const walletsRoot = join(dirname(this.file), 'wallets')
+    const wallets: WalletEntry[] = []
+    let dirs: string[] = []
+    try {
+      dirs = readdirSync(walletsRoot, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort()
+    } catch {
+      // No wallets/ directory at all — fall through to just the default entry.
+    }
+    for (const id of dirs) {
+      const has = (name: string): boolean => existsSync(join(walletsRoot, id, name))
+      if (id === DEFAULT_WALLET_ID || has('vault.json') || has('seed.json')) {
+        wallets.push({ id, kind: 'seed', label: id === DEFAULT_WALLET_ID ? 'Main wallet' : 'Recovered wallet', createdAt: Date.now() })
+      } else if (has('key.json')) {
+        wallets.push({ id, kind: 'key', label: 'Recovered key', createdAt: Date.now() })
+      } else if (has('watch.json')) {
+        wallets.push({ id, kind: 'watch', label: 'Recovered watch wallet', createdAt: Date.now() })
+      }
+      // Unrecognizable directory: skip — its files stay on disk untouched.
+    }
+    // The primary wallet always exists conceptually (it roots the app-data key);
+    // list it even if its directory hasn't been created yet, and list it first.
+    if (!wallets.some((w) => w.id === DEFAULT_WALLET_ID)) {
+      wallets.unshift({ id: DEFAULT_WALLET_ID, kind: 'seed', label: 'Main wallet', createdAt: Date.now() })
+    } else {
+      wallets.sort((a, b) => (a.id === DEFAULT_WALLET_ID ? -1 : b.id === DEFAULT_WALLET_ID ? 1 : a.id.localeCompare(b.id)))
+    }
+    return { version: REGISTRY_VERSION, wallets, activeWalletId: DEFAULT_WALLET_ID }
   }
 
   private read(): unknown {
