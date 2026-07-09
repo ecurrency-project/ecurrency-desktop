@@ -1,7 +1,7 @@
-import type { HDKey, Network } from '@qbitcoin/crypto'
+import { activeScheme, type HDKey, type Network } from '@qbitcoin/crypto'
 import type { AddressAlgo, ReceiveAddressEntry } from '../../shared/protocol'
 import { deriveClassicalAddress, deriveFalconAddress } from './addresses'
-import type { WalletMeta, WalletMetaStore } from './meta'
+import { indicesFor, withIndices, type SchemeIndices, type WalletMeta, type WalletMetaStore } from './meta'
 
 // What the service needs to derive: the master key (read inside main only) and a way
 // to know when to drop cached metadata. `getMasterKey` is async so a non-primary seed
@@ -11,7 +11,9 @@ export interface WalletVault {
   on(listener: (event: { readonly type: string }) => void): () => void
 }
 
-// Hands out receive addresses for the unlocked wallet. The master key is read
+// Hands out receive addresses for the unlocked wallet — always on the ACTIVE
+// derivation scheme (legacy schemes are scan-only: their funds stay visible and
+// spendable, but no fresh addresses are issued there). The master key is read
 // from the Vault inside main and used to derive; ONLY the address string ever
 // leaves this service. HD indices are cached while unlocked and persisted via
 // the (sealed) meta store; the cache is dropped whenever the vault locks, is
@@ -35,26 +37,25 @@ export class AddressService {
   /** Current receive address for `algo` (default classical). Requires unlocked. */
   async getReceiveAddress(algo: AddressAlgo = 'ecdsa'): Promise<string> {
     assertDerivable(algo)
-    const meta = await this.ensureMeta()
-    return this.deriveReceiveAt(algo, algo === 'falcon512' ? meta.pqReceiveIndex : meta.receiveIndex)
+    const cur = await this.activeIndices()
+    return this.deriveReceiveAt(algo, algo === 'falcon512' ? cur.pqReceiveIndex : cur.receiveIndex)
   }
 
   /** Advance the receive index for `algo`, persist it, and return its address. */
   async getNewReceiveAddress(algo: AddressAlgo = 'ecdsa'): Promise<string> {
     assertDerivable(algo)
-    const meta = await this.ensureMeta()
-    const next: WalletMeta =
-      algo === 'falcon512' ? { ...meta, pqReceiveIndex: meta.pqReceiveIndex + 1 } : { ...meta, receiveIndex: meta.receiveIndex + 1 }
-    await this.metaStore.save(next)
-    this.meta = next
+    const cur = await this.activeIndices()
+    const next: SchemeIndices =
+      algo === 'falcon512' ? { ...cur, pqReceiveIndex: cur.pqReceiveIndex + 1 } : { ...cur, receiveIndex: cur.receiveIndex + 1 }
+    await this.saveActiveIndices(next)
     return this.deriveReceiveAt(algo, algo === 'falcon512' ? next.pqReceiveIndex : next.receiveIndex)
   }
 
   /** Every receive address surfaced so far for `algo` (indices 0..current), current last. */
   async listReceiveAddresses(algo: AddressAlgo = 'ecdsa'): Promise<readonly ReceiveAddressEntry[]> {
     assertDerivable(algo)
-    const meta = await this.ensureMeta()
-    const current = algo === 'falcon512' ? meta.pqReceiveIndex : meta.receiveIndex
+    const cur = await this.activeIndices()
+    const current = algo === 'falcon512' ? cur.pqReceiveIndex : cur.receiveIndex
     const out: ReceiveAddressEntry[] = []
     for (let index = 0; index <= current; index += 1) {
       out.push({ address: await this.deriveReceiveAt(algo, index), index, current: index === current })
@@ -71,31 +72,27 @@ export class AddressService {
 
   /** Current change address (change chain, at the stored change index). */
   async getChangeAddress(): Promise<string> {
-    const meta = await this.ensureMeta()
-    return this.deriveAt(1, meta.changeIndex)
+    const cur = await this.activeIndices()
+    return this.deriveAt(1, cur.changeIndex)
   }
 
   /** Advance the change index after a send that produced change. Persists. */
   async advanceChange(): Promise<void> {
-    const meta = await this.ensureMeta()
-    const next: WalletMeta = { ...meta, changeIndex: meta.changeIndex + 1 }
-    await this.metaStore.save(next)
-    this.meta = next
+    const cur = await this.activeIndices()
+    await this.saveActiveIndices({ ...cur, changeIndex: cur.changeIndex + 1 })
   }
 
   /** Current PQ (Falcon) change address (change chain, at the PQ change index). */
   async getPqChangeAddress(): Promise<string> {
-    const meta = await this.ensureMeta()
+    const cur = await this.activeIndices()
     const master = await this.vault.getMasterKey()
-    return deriveFalconAddress(master, { account: this.account, chain: 1, index: meta.pqChangeIndex, network: this.network })
+    return deriveFalconAddress(master, { account: this.account, chain: 1, index: cur.pqChangeIndex, network: this.network })
   }
 
   /** Advance the PQ change index after a PQ send that produced change. Persists. */
   async advancePqChange(): Promise<void> {
-    const meta = await this.ensureMeta()
-    const next: WalletMeta = { ...meta, pqChangeIndex: meta.pqChangeIndex + 1 }
-    await this.metaStore.save(next)
-    this.meta = next
+    const cur = await this.activeIndices()
+    await this.saveActiveIndices({ ...cur, pqChangeIndex: cur.pqChangeIndex + 1 })
   }
 
   private async deriveAt(chain: 0 | 1, index: number): Promise<string> {
@@ -111,6 +108,17 @@ export class AddressService {
   private async ensureMeta(): Promise<WalletMeta> {
     if (this.meta === null) this.meta = await this.metaStore.load()
     return this.meta
+  }
+
+  /** The active scheme's issued-index floors (fresh addresses live only there). */
+  private async activeIndices(): Promise<SchemeIndices> {
+    return indicesFor(await this.ensureMeta(), activeScheme().id)
+  }
+
+  private async saveActiveIndices(indices: SchemeIndices): Promise<void> {
+    const next = withIndices(await this.ensureMeta(), activeScheme().id, indices)
+    await this.metaStore.save(next)
+    this.meta = next
   }
 }
 

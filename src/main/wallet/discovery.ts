@@ -114,6 +114,11 @@ export type Algo = Algorithm
 export interface DeriveBranch {
   readonly kind: 'derive'
   readonly algo: Algo
+  /** Stable id of the derivation scheme this branch lives under. Signing
+   *  derives the input's key on ITS OWN scheme's path, so every address found
+   *  here must stay attributed to the branch's scheme. Absent only where no
+   *  scheme applies (key wallets, pasted address lists — never signed via HD). */
+  readonly scheme?: string
   readonly derive: DeriveAddress
   readonly floors: { receive: number; change: number }
 }
@@ -123,6 +128,9 @@ export interface DeriveBranch {
 export interface ListBranch {
   readonly kind: 'list'
   readonly algo: Algo
+  /** See {@link DeriveBranch.scheme}. A v2 watch descriptor's Falcon lists carry
+   *  their scheme; pasted lists and key wallets have none. */
+  readonly scheme?: string
   readonly addresses: readonly { chain: Chain; index: number; address: string }[]
 }
 

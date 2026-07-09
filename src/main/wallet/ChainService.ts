@@ -10,6 +10,13 @@ import {
 import type { ActiveAddress } from './spendable'
 import type { AddressAlgo, FeeBands, HistoryItem, HistoryPage, TokenBalance, TxDetail, TxIoEntry, WalletSummary } from '../../shared/protocol'
 
+/** What discovery learned about one of our addresses: the branch's signature
+ *  algorithm and (when the branch is HD-derived) its derivation scheme id. */
+interface AddressTag {
+  readonly algo: Algo
+  readonly scheme?: string
+}
+
 // The chain backend the service needs. The real ChainClient satisfies it; tests
 // pass a fake, so the service is exercised without any network.
 export interface ChainBackend extends AddressLookup {
@@ -104,11 +111,11 @@ export class ChainService {
     const [tx, tip, byAlgo] = await Promise.all([this.backend.getTransaction(txid), this.tipHeight(), this.discoverByAlgo()])
     const confirmations = tx.status.confirmed && tx.status.blockHeight !== undefined ? Math.max(0, tip - tx.status.blockHeight + 1) : 0
     const entry = (address: string | undefined, value: bigint, tokenId?: string, tokenAmount?: bigint): MutableIoEntry => {
-      const algo = address !== undefined ? byAlgo.get(address) : undefined
+      const tag = address !== undefined ? byAlgo.get(address) : undefined
       const e: MutableIoEntry = {
         amountAtomic: value.toString(),
-        own: algo !== undefined,
-        pq: algo === 'falcon512',
+        own: tag !== undefined,
+        pq: tag?.algo === 'falcon512',
       }
       if (address !== undefined) e.address = address
       if (tokenId !== undefined) {
@@ -239,15 +246,16 @@ export class ChainService {
     return item
   }
 
-  // address → signature scheme, populated as a side effect of discover() (which
-  // every balance/history read already runs). The detail view reuses this rather
-  // than triggering its own discovery, so opening it is instant once the dashboard
-  // or Activity has loaded. It only forces a discovery if nothing ran recently.
-  private algoMemo: { at: number; map: Map<string, Algo> } | null = null
-  private async discoverByAlgo(): Promise<Map<string, Algo>> {
+  // address → its branch tag (signature algo + derivation scheme id), populated as
+  // a side effect of discover() (which every balance/history read already runs).
+  // The detail view reuses this rather than triggering its own discovery, so opening
+  // it is instant once the dashboard or Activity has loaded. It only forces a
+  // discovery if nothing ran recently.
+  private algoMemo: { at: number; map: Map<string, AddressTag> } | null = null
+  private async discoverByAlgo(): Promise<Map<string, AddressTag>> {
     if (this.algoMemo !== null && Date.now() - this.algoMemo.at < 60_000) return this.algoMemo.map
     await this.discover() // populates algoMemo
-    return this.algoMemo?.map ?? new Map<string, Algo>()
+    return this.algoMemo?.map ?? new Map<string, AddressTag>()
   }
 
   /** Warm the address index off the critical path (called on unlock) so the first
@@ -256,14 +264,20 @@ export class ChainService {
     await this.discoverByAlgo()
   }
 
-  // The wallet's active addresses (those with history), tagged with their scheme,
-  // for the spend pool to pull UTXOs from. Reuses the shared discover() pass so it
-  // doesn't trigger a second address scan — the chain reads and the pool now share
-  // one gap-scan per load.
+  // The wallet's active addresses (those with history), tagged with their algorithm
+  // and derivation scheme, for the spend pool to pull UTXOs from. Reuses the shared
+  // discover() pass so it doesn't trigger a second address scan — the chain reads
+  // and the pool now share one gap-scan per load.
   async spendableAddresses(): Promise<ActiveAddress[]> {
     const discovered = await this.discover()
     const byAlgo = this.algoMemo?.map
-    return discovered.filter((d) => isActive(d.info)).map((d) => ({ address: d.address, chain: d.chain, index: d.index, algo: byAlgo?.get(d.address) ?? 'ecdsa' }))
+    return discovered
+      .filter((d) => isActive(d.info))
+      .map((d) => {
+        const tag = byAlgo?.get(d.address)
+        const base: ActiveAddress = { address: d.address, chain: d.chain, index: d.index, algo: tag?.algo ?? 'ecdsa' }
+        return tag?.scheme !== undefined ? { ...base, scheme: tag.scheme } : base
+      })
   }
 
   // Tip height, cached briefly. Blocks are ~10s apart, so a few seconds of staleness
@@ -297,16 +311,17 @@ export class ChainService {
 
   private async runDiscover(): Promise<DiscoveredAddress[]> {
     // Discover every branch in parallel, tagging each found address with its branch's
-    // scheme so the address→scheme map is built in the same pass (reused by the spend
-    // pool and the detail view).
+    // algorithm + derivation scheme so the address→tag map is built in the same pass
+    // (reused by the spend pool — which needs the scheme to sign on the right path —
+    // and the detail view).
     const branches = await this.branches()
     const results = await Promise.all(
-      branches.map(async (b) => ({ algo: b.algo, found: await discoverBranch(b, this.backend) })),
+      branches.map(async (b) => ({ algo: b.algo, scheme: b.scheme, found: await discoverBranch(b, this.backend) })),
     )
-    const map = new Map<string, Algo>()
+    const map = new Map<string, AddressTag>()
     const all: DiscoveredAddress[] = []
-    for (const { algo, found } of results) {
-      for (const d of found) map.set(d.address, algo)
+    for (const { algo, scheme, found } of results) {
+      for (const d of found) map.set(d.address, scheme !== undefined ? { algo, scheme } : { algo })
       all.push(...found)
     }
     this.algoMemo = { at: Date.now(), map }

@@ -1,4 +1,4 @@
-import { addressFromPubkey, deriveFalconKeypair, derivePath, nativePath, type HDKey, type Network } from '@qbitcoin/crypto'
+import { activeScheme, addressFromPubkey, deriveFalconKeypair, derivePath, nativePathFor, type DerivationScheme, type HDKey, type Network } from '@qbitcoin/crypto'
 
 // HD address derivation. The classical (secp256k1/ECDSA) branch is synchronous;
 // the post-quantum (Falcon-512) branch is async because it runs WASM keygen.
@@ -17,6 +17,9 @@ export interface DeriveOptions {
   readonly chain: Chain
   readonly index: number
   readonly network: Network
+  /** Derivation scheme (decides the coin_type level). Defaults to the active
+   *  scheme; discovery on a legacy branch passes that branch's scheme. */
+  readonly scheme?: DerivationScheme
 }
 
 /**
@@ -26,7 +29,8 @@ export interface DeriveOptions {
  */
 export function deriveClassicalAddress(master: HDKey, opts: DeriveOptions): string {
   const account = opts.account ?? 0
-  const child = derivePath(master, nativePath(account, opts.index, opts.chain))
+  const scheme = opts.scheme ?? activeScheme()
+  const child = derivePath(master, nativePathFor(scheme, account, opts.index, opts.chain))
   const pubkey = child.publicKey
   if (pubkey == null) {
     throw new Error('Derived HD node has no public key')
@@ -41,6 +45,6 @@ export function deriveClassicalAddress(master: HDKey, opts: DeriveOptions): stri
  */
 export async function deriveFalconAddress(master: HDKey, opts: DeriveOptions): Promise<string> {
   const account = opts.account ?? 0
-  const keypair = await deriveFalconKeypair(master, account, opts.chain, opts.index)
+  const keypair = await deriveFalconKeypair(master, account, opts.chain, opts.index, opts.scheme ?? activeScheme())
   return addressFromPubkey(keypair.publicKey, 'falcon512', opts.network)
 }

@@ -1,8 +1,10 @@
 import {
+  activeScheme,
   deriveFalconKeypair,
   derivePath,
-  nativePath,
+  nativePathFor,
   fromHex,
+  requireScheme,
   serialize,
   signTransaction,
   toHex,
@@ -43,23 +45,30 @@ export function toCryptoTransaction(unsigned: UnsignedTx): Transaction {
 }
 
 // Sign every input with a key derived from the master key on that input's own
-// branch. Runs in main only; each derived private key is wiped immediately after
-// signing. Returns the signed Transaction (siglist + redeem script attached).
+// branch AND derivation scheme. Runs in main only; each derived private key is
+// wiped immediately after signing. Returns the signed Transaction (siglist +
+// redeem script attached).
 export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey): Promise<Transaction> {
   const tx = toCryptoTransaction(unsigned)
   // Each input is signed on its own branch by its own algorithm: classical inputs
   // with a secp256k1 child key (sync), PQ inputs with a Falcon-512 keypair (async,
-  // WASM keygen). signTransaction dispatches the actual signing per `algo`.
+  // WASM keygen). The input's scheme decides the coin_type level of the path —
+  // a legacy-scheme UTXO must be signed with the key at its OWN path, not the
+  // active scheme's. An unknown scheme id is refused loudly (signing with a
+  // wrong-path key would produce an unbroadcastable transaction); an absent one
+  // falls back to the active scheme (inputs from pre-multi-scheme drafts).
+  // signTransaction dispatches the actual signing per `algo`.
   const signers: SigningInput[] = await Promise.all(
     unsigned.inputs.map(async (input, index): Promise<SigningInput> => {
+      const scheme = input.scheme !== undefined ? requireScheme(input.scheme) : activeScheme()
       if (input.algo === 'falcon512') {
-        const kp = await deriveFalconKeypair(master, input.account, input.chain, input.index)
+        const kp = await deriveFalconKeypair(master, input.account, input.chain, input.index, scheme)
         return { inputIndex: index, privateKey: kp.privateKey, publicKey: kp.publicKey, algo: 'falcon512' }
       }
       if (input.algo !== 'ecdsa') {
         throw new Error(`Unsupported signing algorithm: ${input.algo}`)
       }
-      const child = derivePath(master, nativePath(input.account, input.index, input.chain))
+      const child = derivePath(master, nativePathFor(scheme, input.account, input.index, input.chain))
       if (child.privateKey === null || child.publicKey === null) {
         throw new Error(`No key material for input ${index}`)
       }

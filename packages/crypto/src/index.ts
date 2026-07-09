@@ -45,12 +45,15 @@ export {
   DERIVATION_SCHEMES,
   HARDENED,
   HDKey,
+  META_V1_SCHEME_ID,
   SCHEME_QBT_PLACEHOLDER,
   activeScheme,
   derivePath,
   nativePath,
+  nativePathFor,
   legacySchemes,
   masterKeyFromSeed,
+  requireScheme,
   schemeById,
   type DerivationScheme,
 } from './bip32';
@@ -113,6 +116,7 @@ export {
 export {
   addressFromXpub,
   exportAccountXpub,
+  exportAccountXpubFor,
   isValidAccountXpub,
   parseAccountXpub,
 } from './xpub';
@@ -185,6 +189,7 @@ export {
   PURPOSE_FALCON512,
   deriveFalconKeypair,
   nativePqPath,
+  nativePqPathFor,
 } from './falconHd';
 
 // Schnorr (BIP-340) primitives + the feature gate for offering it.

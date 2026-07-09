@@ -15,7 +15,7 @@ import { sha256 as nobleSha256 } from '@noble/hashes/sha256';
 import { describe, expect, it } from 'vitest';
 
 import { addressFromPubkey, decodeAddress } from './address';
-import { COIN_TYPE, derivePath, masterKeyFromSeed } from './bip32';
+import { COIN_TYPE, derivePath, masterKeyFromSeed, type DerivationScheme } from './bip32';
 import { mnemonicToSeed } from './bip39';
 import { toHex } from './encoding/hex';
 import {
@@ -29,6 +29,7 @@ import {
   PURPOSE_FALCON512,
   deriveFalconKeypair,
   nativePqPath,
+  nativePqPathFor,
 } from './falconHd';
 import { sha256 } from './hashes';
 
@@ -46,6 +47,38 @@ describe('nativePqPath', () => {
     expect(nativePqPath(0, 0)).toBe(`m/512'/${COIN_TYPE}'/0'/0'/0'`);
     expect(nativePqPath(0, 0, 1)).toBe(`m/512'/${COIN_TYPE}'/0'/1'/0'`);
     expect(nativePqPath(1, 2, 1)).toBe(`m/512'/${COIN_TYPE}'/1'/1'/2'`);
+  });
+});
+
+const FAKE_SCHEME: DerivationScheme = {
+  id: 'fake-v2',
+  coinType: 7777,
+  label: 'fake',
+  status: 'legacy',
+  pathTemplate: (account, change, index) => `m/44'/7777'/${account}'/${change}/${index}`,
+};
+
+describe('nativePqPathFor / scheme-explicit derivation', () => {
+  it("builds the PQ path on the EXPLICIT scheme's coin_type", () => {
+    expect(nativePqPathFor(FAKE_SCHEME, 0, 0)).toBe("m/512'/7777'/0'/0'/0'");
+    expect(nativePqPathFor(FAKE_SCHEME, 1, 2, 1)).toBe("m/512'/7777'/1'/1'/2'");
+  });
+
+  it('deriveFalconKeypair with an explicit scheme differs from the active one', async () => {
+    const m = master();
+    const active = await deriveFalconKeypair(m, 0, 0, 0);
+    const explicit = await deriveFalconKeypair(m, 0, 0, 0, FAKE_SCHEME);
+    expect(toHex(explicit.publicKey)).not.toBe(toHex(active.publicKey));
+    // …and is deterministic on its own path.
+    const again = await deriveFalconKeypair(m, 0, 0, 0, FAKE_SCHEME);
+    expect(toHex(again.publicKey)).toBe(toHex(explicit.publicKey));
+  });
+
+  it('the HKDF info label does not change with the scheme (versioned separately)', async () => {
+    // Same leaf, same label: reproduce the explicit-scheme keypair's seed input.
+    const child = derivePath(master(), nativePqPathFor(FAKE_SCHEME, 0, 0, 0));
+    const seed48 = hkdf(nobleSha256, child.privateKey!, undefined, FALCON_HD_INFO, 48);
+    expect(seed48.length).toBe(48);
   });
 });
 

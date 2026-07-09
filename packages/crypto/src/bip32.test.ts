@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   COIN_TYPE,
   DERIVATION_SCHEMES,
+  META_V1_SCHEME_ID,
   SCHEME_QBT_PLACEHOLDER,
   activeScheme,
   derivePath,
   nativePath,
+  nativePathFor,
   legacySchemes,
   masterKeyFromSeed,
+  requireScheme,
   schemeById,
+  type DerivationScheme,
 } from './bip32';
 import { fromHex, toHex } from './encoding/hex';
 
@@ -97,6 +101,57 @@ describe('derivation scheme registry', () => {
 
   it('schemeById returns undefined for unknown ids', () => {
     expect(schemeById('qbt-v2-official')).toBeUndefined();
+  });
+
+  it('requireScheme returns known schemes and throws on unknown ids', () => {
+    expect(requireScheme('qbt-v1-placeholder')).toBe(SCHEME_QBT_PLACEHOLDER);
+    expect(() => requireScheme('nope')).toThrow(/Unknown derivation scheme/);
+  });
+
+  // The original scheme must stay in the registry FOREVER, id byte-exact:
+  // its id is persisted in wallet storage (meta, watch descriptors, UTXO
+  // tags) and its paths hold user funds. Removing or renaming it would make
+  // those funds invisible. When a real coin_type lands, it flips to
+  // 'legacy' — it never leaves.
+  it('keeps the v1 scheme registered forever, id byte-exact', () => {
+    const v1 = DERIVATION_SCHEMES.find((s) => s.id === 'qbt-v1-placeholder');
+    expect(v1).toBeDefined();
+    expect(v1!.coinType).toBe(1);
+    // Path shape frozen — coin_type level must match the scheme's coinType.
+    expect(v1!.pathTemplate(0, 0, 0)).toBe("m/44'/1'/0'/0/0");
+  });
+
+  it('lists the active scheme first (scan priority, primary branch pickers)', () => {
+    expect(DERIVATION_SCHEMES[0]!.status).toBe('active');
+  });
+
+  it('has unique scheme ids', () => {
+    const ids = DERIVATION_SCHEMES.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('META_V1_SCHEME_ID names a registered scheme (owner of pre-v2 blobs)', () => {
+    expect(schemeById(META_V1_SCHEME_ID)).toBeDefined();
+    expect(META_V1_SCHEME_ID).toBe('qbt-v1-placeholder');
+  });
+});
+
+describe('nativePathFor', () => {
+  const fake: DerivationScheme = {
+    id: 'fake-v2',
+    coinType: 7777,
+    label: 'fake',
+    status: 'legacy',
+    pathTemplate: (account, change, index) => `m/44'/7777'/${account}'/${change}/${index}`,
+  };
+
+  it('builds the path from the EXPLICIT scheme, not the active one', () => {
+    expect(nativePathFor(fake, 0, 3, 1)).toBe("m/44'/7777'/0'/1/3");
+    expect(nativePathFor(fake, 0, 3, 1)).not.toBe(nativePath(0, 3, 1));
+  });
+
+  it('matches nativePath when given the active scheme', () => {
+    expect(nativePathFor(activeScheme(), 2, 7, 1)).toBe(nativePath(2, 7, 1));
   });
 });
 

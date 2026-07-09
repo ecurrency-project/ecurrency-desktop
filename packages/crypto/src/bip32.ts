@@ -134,6 +134,31 @@ export function schemeById(id: string): DerivationScheme | undefined {
   return DERIVATION_SCHEMES.find((s) => s.id === id);
 }
 
+/**
+ * Look up a scheme by id, throwing on an unknown one. Use where an unknown
+ * id is a data-integrity error (e.g. resolving the scheme of a UTXO about
+ * to be signed) rather than an expected miss.
+ */
+export function requireScheme(id: string): DerivationScheme {
+  const scheme = schemeById(id);
+  if (scheme === undefined) {
+    throw new Error(`Unknown derivation scheme '${id}'`);
+  }
+  return scheme;
+}
+
+/**
+ * The scheme that owns data persisted BEFORE storage became per-scheme
+ * (wallet meta without a `schemes` map, version-1 watch descriptors):
+ * whatever scheme was active when those formats were written.
+ *
+ * BRAND VALUE (follows the scheme registry above): when a brand adds a new
+ * active scheme, this stays pointing at the ORIGINAL scheme — pre-existing
+ * blobs on disk were written under it, and re-attributing them would shift
+ * issued-index floors onto the wrong branch.
+ */
+export const META_V1_SCHEME_ID: string = SCHEME_QBT_PLACEHOLDER.id;
+
 // ─── Convenience aliases ──────────────────────────────────────────────
 
 /** The active coin_type number. Convenience over `activeScheme().coinType`. */
@@ -154,5 +179,19 @@ export function nativePath(
   index: number,
   change: 0 | 1 = 0,
 ): string {
-  return activeScheme().pathTemplate(account, change, index);
+  return nativePathFor(activeScheme(), account, index, change);
+}
+
+/**
+ * {@link nativePath} for an EXPLICIT scheme — the multi-scheme form used by
+ * discovery and signing, where the address's own scheme (not necessarily the
+ * active one) decides the path. Argument order matches `nativePath`.
+ */
+export function nativePathFor(
+  scheme: DerivationScheme,
+  account: number,
+  index: number,
+  change: 0 | 1 = 0,
+): string {
+  return scheme.pathTemplate(account, change, index);
 }

@@ -127,7 +127,7 @@ export class SendService {
     const frozen = await this.deps.frozen()
     const tokenUtxos: SpendableTokenUtxo[] = all
       .filter((u) => u.tokenId === tokenId && u.tokenAmount !== undefined)
-      .map((u) => ({ txid: u.txid, vout: u.vout, value: u.value, chain: u.chain, index: u.index, algo: u.algo, tokenAmount: u.tokenAmount as bigint }))
+      .map((u) => ({ txid: u.txid, vout: u.vout, value: u.value, chain: u.chain, index: u.index, algo: u.algo, scheme: u.scheme, tokenAmount: u.tokenAmount as bigint }))
     const nativeUtxos = all.filter((u) => u.tokenId === undefined && !frozen.has(outpointOf(u)))
 
     const rate = await this.deps.feeRate()

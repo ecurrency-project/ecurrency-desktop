@@ -20,9 +20,11 @@ export interface GatheredUtxo extends SpendableUtxo {
 }
 
 /** An extra HD branch to gather alongside the classical one (e.g. Falcon PQ).
- *  Carries the algorithm so each UTXO is tagged for the signer + coin control. */
+ *  Carries the algorithm (and, when HD-derived, the derivation scheme id) so
+ *  each UTXO is tagged for the signer + coin control. */
 export interface SpendBranch {
   readonly algo: Algo
+  readonly scheme?: string
   readonly derive: DeriveAddress
   readonly floors: { receive: number; change: number }
 }
@@ -44,7 +46,7 @@ export async function gatherSpendable(
   const perBranch = await Promise.all(
     branches.map(async (branch): Promise<GatheredUtxo[]> => {
       const discovered = await discoverAll(branch.derive, backend, branch.floors)
-      const active = activeFrom(discovered, branch.algo)
+      const active = activeFrom(discovered, branch.algo, branch.scheme)
       return gatherFromActive(active, backend)
     }),
   )
@@ -52,13 +54,19 @@ export async function gatherSpendable(
 }
 
 /** A discovered, active address to pull UTXOs from, tagged with its branch's
- *  signature scheme (so each UTXO is attributed to the right key for signing). */
-export type ActiveAddress = Pick<DiscoveredAddress, 'address' | 'chain' | 'index'> & { readonly algo: Algo }
+ *  signature algorithm and derivation scheme (so each UTXO is attributed to the
+ *  right key — on the right scheme's path — for signing). */
+export type ActiveAddress = Pick<DiscoveredAddress, 'address' | 'chain' | 'index'> & { readonly algo: Algo; readonly scheme?: string }
 
 /** The active subset of a branch's discovered addresses (the inactive gap-padding
- *  can't hold UTXOs), tagged with the branch's scheme. */
-export function activeFrom(discovered: readonly DiscoveredAddress[], algo: Algo): ActiveAddress[] {
-  return discovered.filter((entry) => isActive(entry.info)).map((entry) => ({ address: entry.address, chain: entry.chain, index: entry.index, algo }))
+ *  can't hold UTXOs), tagged with the branch's algorithm + scheme. */
+export function activeFrom(discovered: readonly DiscoveredAddress[], algo: Algo, scheme?: string): ActiveAddress[] {
+  return discovered
+    .filter((entry) => isActive(entry.info))
+    .map((entry) => {
+      const base: ActiveAddress = { address: entry.address, chain: entry.chain, index: entry.index, algo }
+      return scheme !== undefined ? { ...base, scheme } : base
+    })
 }
 
 // Pull UTXOs for already-discovered active addresses and tag them for the signer
@@ -77,6 +85,7 @@ export async function gatherFromActive(active: readonly ActiveAddress[], backend
         chain: a.chain,
         index: a.index,
         algo: a.algo,
+        scheme: a.scheme,
         address: a.address,
         confirmed: utxo.status.confirmed,
         blockHeight: utxo.status.blockHeight,
