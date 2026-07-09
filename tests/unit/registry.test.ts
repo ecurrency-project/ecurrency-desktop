@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -78,18 +78,58 @@ describe('WalletRegistry', () => {
     expect(readFileSync(file, 'utf8')).toBe(onDisk)
   })
 
-  it('falls back to a default registry when the index is corrupt', () => {
-    const file = join(dir, 'wallets.json')
-    writeFileSync(file, '{ not valid json')
-
-    const reg = new WalletRegistry(file)
-    expect(reg.getActiveId()).toBe(DEFAULT_WALLET_ID)
-    expect(reg.list()).toHaveLength(1)
-  })
-
   it('returns undefined for an unknown wallet id', () => {
     const reg = new WalletRegistry(join(dir, 'wallets.json'))
     expect(reg.get('nope')).toBeUndefined()
+  })
+})
+
+describe('WalletRegistry corruption recovery', () => {
+  const file = (): string => join(dir, 'wallets.json')
+  const mkWallet = (id: string, marker: string): void => {
+    mkdirSync(walletDir(dir, id), { recursive: true })
+    writeFileSync(join(walletDir(dir, id), marker), 'SEALED')
+  }
+
+  it('preserves the corrupt index as a backup instead of overwriting it', () => {
+    writeFileSync(file(), '{ not valid json')
+    new WalletRegistry(file())
+    const backups = readdirSync(dir).filter((n) => n.startsWith('wallets.json.corrupt-'))
+    expect(backups).toHaveLength(1)
+    expect(readFileSync(join(dir, backups[0]!), 'utf8')).toBe('{ not valid json')
+  })
+
+  it('rebuilds every wallet from the on-disk directories (imported ones stay reachable)', () => {
+    mkWallet(DEFAULT_WALLET_ID, 'vault.json')
+    mkWallet('aaaa-imported-seed', 'seed.json')
+    mkWallet('bbbb-imported-key', 'key.json')
+    mkWallet('cccc-watch', 'watch.json')
+    mkdirSync(walletDir(dir, 'dddd-unknown'), { recursive: true }) // no marker files — skipped
+    writeFileSync(file(), '"corrupt"')
+
+    const reg = new WalletRegistry(file())
+    expect(reg.getActiveId()).toBe(DEFAULT_WALLET_ID)
+    expect(reg.list().map((w) => `${w.id}:${w.kind}`)).toEqual([
+      `${DEFAULT_WALLET_ID}:seed`,
+      'aaaa-imported-seed:seed',
+      'bbbb-imported-key:key',
+      'cccc-watch:watch',
+    ])
+    // The rebuilt index persists and reloads cleanly.
+    expect(new WalletRegistry(file()).list()).toHaveLength(4)
+  })
+
+  it('falls back to just the default wallet when nothing is on disk', () => {
+    writeFileSync(file(), '{ not valid json')
+    const reg = new WalletRegistry(file())
+    expect(reg.getActiveId()).toBe(DEFAULT_WALLET_ID)
+    expect(reg.list()).toHaveLength(1)
+    expect(reg.get(DEFAULT_WALLET_ID)?.kind).toBe('seed')
+  })
+
+  it('a missing file (first launch) initializes WITHOUT creating a backup', () => {
+    new WalletRegistry(file())
+    expect(readdirSync(dir).some((n) => n.startsWith('wallets.json.corrupt-'))).toBe(false)
   })
 })
 

@@ -107,8 +107,12 @@ export function isLocalOrPrivateHost(hostname: string): boolean {
 // Validate + normalize a user-entered node URL: an http(s) base URL with no trailing
 // slash (NodeEndpoint.url is expected without one). Plain http:// is allowed only for
 // local/private/Tor hosts (see isLocalOrPrivateHost); a remote host must use https://
-// so traffic and any node credentials aren't sent in the clear. Throws a user-facing
-// message on anything unusable.
+// so traffic and any node credentials aren't sent in the clear. Credentials embedded
+// in the URL are refused outright: this string is persisted in the PLAIN node.json,
+// while auth belongs in the sealed NodeAuthStore — accepting `user:pass@host` would
+// silently write the password to disk in the clear. Query strings and fragments make
+// no sense on a base URL (the client appends its own paths) and are refused too.
+// Throws a user-facing message on anything unusable.
 export function normalizeNodeUrl(raw: string): string {
   const trimmed = raw.trim()
   if (trimmed === '') throw new Error('Enter a node URL.')
@@ -120,6 +124,12 @@ export function normalizeNodeUrl(raw: string): string {
   }
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new Error('Node URL must start with https:// or http://.')
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    throw new Error('Do not put credentials in the URL — the URL is stored unencrypted. Use the separate username/password fields; those are stored sealed.')
+  }
+  if (parsed.search !== '' || parsed.hash !== '') {
+    throw new Error('A node URL must be a plain base URL — remove the query string / fragment.')
   }
   if (parsed.protocol === 'http:' && !isLocalOrPrivateHost(parsed.hostname)) {
     throw new Error('A remote node must use https://. Plain http:// is only allowed for localhost, a private/LAN address, or a .onion (Tor) host — otherwise the connection and any node credentials would travel unencrypted.')

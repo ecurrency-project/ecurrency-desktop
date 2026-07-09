@@ -34,6 +34,18 @@ describe('normalizeNodeUrl', () => {
     expect(() => normalizeNodeUrl('not a url')).toThrow()
     expect(() => normalizeNodeUrl('ftp://node.example')).toThrow()
   })
+
+  it('rejects credentials embedded in the URL (they would land in the PLAIN node.json)', () => {
+    expect(() => normalizeNodeUrl('https://user:secret@node.example')).toThrow(/credentials/i)
+    expect(() => normalizeNodeUrl('https://user@node.example')).toThrow(/credentials/i)
+    // …even for local hosts, where http is otherwise fine.
+    expect(() => normalizeNodeUrl('http://user:secret@127.0.0.1:9668')).toThrow(/credentials/i)
+  })
+
+  it('rejects a query string or fragment on the base URL', () => {
+    expect(() => normalizeNodeUrl('https://node.example?token=x')).toThrow()
+    expect(() => normalizeNodeUrl('https://node.example#frag')).toThrow()
+  })
 })
 
 describe('isLocalOrPrivateHost', () => {
