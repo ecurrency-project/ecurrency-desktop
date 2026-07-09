@@ -93,6 +93,25 @@ describe('ChainService', () => {
     expect(items[0]).toMatchObject({ txid: 'tx1', direction: 'in', amountAtomic: '70', feeAtomic: '5' })
   })
 
+  it('scans every scheme branch and tags spendable addresses with their scheme', async () => {
+    // Two schemes (active first), distinct address namespaces — mimicking a
+    // post-coin_type-migration wallet with funds left on the legacy scheme.
+    const multiBranches = async (): Promise<DiscoveryBranch[]> => [
+      { kind: 'derive', algo: 'ecdsa', scheme: 'fake-v2', derive: (c, i) => `v2-${c}-${i}`, floors: { receive: 0, change: 0 } },
+      { kind: 'derive', algo: 'ecdsa', scheme: 'fake-v1', derive: (c, i) => `v1-${c}-${i}`, floors: { receive: 0, change: 0 } },
+    ]
+    const svc = new ChainService(
+      backend({ infos: { 'v2-0-0': fundedInfo('v2-0-0', 10n), 'v1-0-1': fundedInfo('v1-0-1', 25n) } }),
+      multiBranches,
+    )
+    // Balance sums across BOTH schemes' branches.
+    expect((await svc.getSummary()).balanceAtomic).toBe('35')
+    const active = await svc.spendableAddresses()
+    expect(active).toHaveLength(2)
+    expect(active.find((a) => a.address === 'v2-0-0')).toMatchObject({ scheme: 'fake-v2', algo: 'ecdsa', chain: 0, index: 0 })
+    expect(active.find((a) => a.address === 'v1-0-1')).toMatchObject({ scheme: 'fake-v1', algo: 'ecdsa', chain: 0, index: 1 })
+  })
+
   it('maps fee estimates to fast/medium/slow bands', async () => {
     const svc = new ChainService(backend({ fees: { '1': 20, '6': 8, '144': 2 } }), branches)
     expect(await svc.estimateFee()).toEqual({ fast: 20, medium: 8, slow: 2 })

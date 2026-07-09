@@ -1,4 +1,4 @@
-import { masterKeyFromSeed, mnemonicToSeed } from '@qbitcoin/crypto'
+import { activeScheme, masterKeyFromSeed, mnemonicToSeed } from '@qbitcoin/crypto'
 import { describe, expect, it } from 'vitest'
 import { AddressService, type WalletVault } from '../../src/main/wallet/AddressService'
 import { WalletMetaStore } from '../../src/main/wallet/meta'
@@ -36,7 +36,11 @@ describe('AddressService', () => {
     const first = await service.getReceiveAddress()
     const second = await service.getNewReceiveAddress()
     expect(second).not.toBe(first)
-    expect(JSON.parse(readBlob()!)).toEqual({ receiveIndex: 1, changeIndex: 0, pqReceiveIndex: 0, pqChangeIndex: 0 })
+    // Indices are persisted per scheme (v2 meta); fresh addresses advance the ACTIVE one.
+    expect(JSON.parse(readBlob()!)).toEqual({
+      version: 2,
+      schemes: { [activeScheme().id]: { receiveIndex: 1, changeIndex: 0, pqReceiveIndex: 0, pqChangeIndex: 0 } },
+    })
     // The current receive address is now the advanced one.
     expect(await service.getReceiveAddress()).toBe(second)
   })

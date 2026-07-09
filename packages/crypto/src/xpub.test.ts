@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addressFromPubkey } from './address';
-import { derivePath, nativePath, masterKeyFromSeed } from './bip32';
+import { activeScheme, derivePath, nativePath, nativePathFor, masterKeyFromSeed, type DerivationScheme } from './bip32';
 import type { Network } from './constants';
-import { addressFromXpub, exportAccountXpub, isValidAccountXpub, parseAccountXpub } from './xpub';
+import { addressFromXpub, exportAccountXpub, exportAccountXpubFor, isValidAccountXpub, parseAccountXpub } from './xpub';
 
 // A fixed (non-secret) seed — deterministic so the vectors below are stable.
 const master = masterKeyFromSeed(Uint8Array.from({ length: 64 }, (_, i) => (i * 7 + 3) & 0xff));
@@ -33,6 +33,25 @@ describe('account xpub (classical watch-only)', () => {
   it('accepts a freshly exported account xpub', () => {
     expect(isValidAccountXpub(exportAccountXpub(master, 0))).toBe(true);
     expect(isValidAccountXpub(exportAccountXpub(master, 5))).toBe(true);
+  });
+
+  it('exportAccountXpubFor: active scheme matches the default export, another scheme differs but derives its own leaves', () => {
+    const fake: DerivationScheme = {
+      id: 'fake-v2',
+      coinType: 7777,
+      label: 'fake',
+      status: 'legacy',
+      pathTemplate: (account, change, index) => `m/44'/7777'/${account}'/${change}/${index}`,
+    };
+    expect(exportAccountXpubFor(master, activeScheme(), 0)).toBe(exportAccountXpub(master, 0));
+    const fakeXpub = exportAccountXpubFor(master, fake, 0);
+    expect(fakeXpub).not.toBe(exportAccountXpub(master, 0));
+    expect(isValidAccountXpub(fakeXpub)).toBe(true);
+    // Public CKD from the scheme's account node reproduces the scheme's seed leaves.
+    const node = derivePath(master, nativePathFor(fake, 0, 3, 1));
+    expect(addressFromXpub(parseAccountXpub(fakeXpub), 1, 3, 'mainnet')).toBe(
+      addressFromPubkey(node.publicKey!, 'ecdsa', 'mainnet'),
+    );
   });
 
   it('rejects junk, a master-depth xpub, and a private extended key', () => {

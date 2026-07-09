@@ -1,4 +1,4 @@
-import { decodeAddress, deriveFalconKeypair, derivePath, nativePath, encodeTokenTransfer, masterKeyFromSeed, mnemonicToSeed, sighash, toHex, TX_TYPE_TOKENS, verifySiglistEntry } from '@qbitcoin/crypto'
+import { activeScheme, decodeAddress, deriveFalconKeypair, derivePath, nativePath, encodeTokenTransfer, masterKeyFromSeed, mnemonicToSeed, sighash, toHex, TX_TYPE_TOKENS, verifySiglistEntry } from '@qbitcoin/crypto'
 import { describe, expect, it } from 'vitest'
 import type { UnsignedTx } from '../../src/main/wallet/buildTx'
 import { buildSignedTransaction, signUnsignedTx, toCryptoTransaction } from '../../src/main/wallet/signTx'
@@ -43,6 +43,25 @@ describe('signUnsignedTx', () => {
     const digest = sighash(toCryptoTransaction(u))
     const { publicKey } = await deriveFalconKeypair(MASTER, 0, 0, 0)
     expect(await verifySiglistEntry(entry, digest, publicKey)).toBe(true)
+  })
+
+  it('signs an input tagged with its scheme id on that scheme\'s path (same as active here)', async () => {
+    // The registry has a single scheme on this branch, so tagging the input with
+    // it must reproduce the untagged signature byte for byte (same path).
+    const untagged = await signUnsignedTx(unsigned(), MASTER)
+    const tagged: UnsignedTx = {
+      ...unsigned(),
+      inputs: unsigned().inputs.map((i) => ({ ...i, scheme: activeScheme().id })),
+    }
+    expect((await signUnsignedTx(tagged, MASTER)).rawHex).toBe(untagged.rawHex)
+  })
+
+  it('refuses an input with an unknown scheme id (never sign on a guessed path)', async () => {
+    const u: UnsignedTx = {
+      ...unsigned(),
+      inputs: unsigned().inputs.map((i) => ({ ...i, scheme: 'no-such-scheme' })),
+    }
+    await expect(signUnsignedTx(u, MASTER)).rejects.toThrow(/Unknown derivation scheme/)
   })
 
   it('maps a token transfer to TX_TYPE_TOKENS with the wire token-id prefix, still signable', async () => {

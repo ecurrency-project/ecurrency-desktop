@@ -10,25 +10,35 @@
 // list of derived addresses instead.)
 
 import { addressFromPubkey } from './address';
-import { nativePath, HDKey } from './bip32';
+import { activeScheme, nativePathFor, HDKey, type DerivationScheme } from './bip32';
 import type { Network } from './constants';
 
 // Depth of an account node: purpose (44') / coin_type' / account'.
 const ACCOUNT_DEPTH = 3;
 
 // The first three levels of the classical leaf path (purpose / coin / account),
-// taken from `nativePath` so it can never drift from the leaf derivation scheme.
-function accountPath(account: number): string {
-  return nativePath(account, 0, 0).split('/').slice(0, ACCOUNT_DEPTH + 1).join('/');
+// taken from the scheme's own path template so it can never drift from the
+// leaf derivation scheme.
+function accountPath(scheme: DerivationScheme, account: number): string {
+  return nativePathFor(scheme, account, 0, 0).split('/').slice(0, ACCOUNT_DEPTH + 1).join('/');
 }
 
 /**
- * Export the account-level extended public key (xpub) for the classical branch.
- * Derived from the master key, but carries only public material — safe to hand to
- * a watch-only wallet.
+ * Export the account-level extended public key (xpub) for the classical branch
+ * of the ACTIVE scheme. Derived from the master key, but carries only public
+ * material — safe to hand to a watch-only wallet.
  */
 export function exportAccountXpub(master: HDKey, account = 0): string {
-  return master.derive(accountPath(account)).publicExtendedKey;
+  return exportAccountXpubFor(master, activeScheme(), account);
+}
+
+/**
+ * {@link exportAccountXpub} for an EXPLICIT scheme — used when exporting a
+ * multi-scheme watch descriptor, which carries one classical xpub per scheme
+ * (a legacy scheme's account node lives under a different coin_type).
+ */
+export function exportAccountXpubFor(master: HDKey, scheme: DerivationScheme, account = 0): string {
+  return master.derive(accountPath(scheme, account)).publicExtendedKey;
 }
 
 /**

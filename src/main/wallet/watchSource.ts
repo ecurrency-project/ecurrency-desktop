@@ -1,8 +1,8 @@
-import { isValidAccountXpub, validateAddress, type Network } from '@qbitcoin/crypto'
+import { activeScheme, isValidAccountXpub, validateAddress, type Network } from '@qbitcoin/crypto'
 import type { WatchInput } from '../../shared/protocol'
 import { createAddressListSource, createDescriptorAddressSource, type AddressSource } from './AddressSource'
 import type { BlobStore, Sealer } from './meta'
-import { parseWatchDescriptor, WATCH_DESCRIPTOR_KIND, WATCH_DESCRIPTOR_VERSION, type WatchDescriptor } from './watchDescriptor'
+import { parseWatchDescriptor, WATCH_DESCRIPTOR_KIND, type WatchDescriptor } from './watchDescriptor'
 
 // What a watch wallet needs to follow the chain without any key: either a descriptor
 // (classical xpub + the source wallet's Falcon address list) or a bare list of
@@ -25,10 +25,17 @@ export function parseWatchInput(input: WatchInput, network: Network): StoredWatc
     case 'xpub': {
       const xpub = input.xpub.trim()
       if (!isValidAccountXpub(xpub)) throw new Error('That does not look like a valid account xpub.')
-      // A bare xpub watches only the classical branch (no Falcon addresses).
+      // A bare xpub watches only the classical branch (no Falcon addresses). The
+      // xpub itself carries no scheme information, so it's filed under the active
+      // scheme — for a watch wallet the tag is informational (never signed).
       return {
         type: 'descriptor',
-        descriptor: { kind: WATCH_DESCRIPTOR_KIND, version: WATCH_DESCRIPTOR_VERSION, network, classicalXpub: xpub, falcon: { receive: [], change: [] } },
+        descriptor: {
+          kind: WATCH_DESCRIPTOR_KIND,
+          version: 2,
+          network,
+          schemes: [{ scheme: activeScheme().id, classicalXpub: xpub, falcon: { receive: [], change: [] } }],
+        },
       }
     }
     case 'addresses': {

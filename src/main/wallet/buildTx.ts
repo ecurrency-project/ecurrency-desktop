@@ -31,6 +31,11 @@ export interface SpendableUtxo {
   readonly chain: 0 | 1
   readonly index: number
   readonly algo: Algo
+  /** Derivation scheme id of the owning address's branch. The signer derives
+   *  the key on THIS scheme's path (legacy-scheme UTXOs stay spendable after a
+   *  coin_type migration). Absent on non-HD inputs (imported keys) — and then
+   *  the signer falls back to the active scheme. */
+  readonly scheme?: string
 }
 
 /** A token UTXO: a spendable input that also carries a token quantity. Its native
@@ -47,6 +52,9 @@ export interface UnsignedInput {
   readonly chain: 0 | 1
   readonly index: number
   readonly algo: Algo
+  /** See {@link SpendableUtxo.scheme} — carried through so signing derives on
+   *  the input's own scheme. */
+  readonly scheme?: string
 }
 
 export interface UnsignedOutput {
@@ -224,6 +232,7 @@ function toUnsignedInputs(selected: readonly SpendableUtxo[]): UnsignedInput[] {
     chain: u.chain,
     index: u.index,
     algo: u.algo,
+    ...(u.scheme !== undefined ? { scheme: u.scheme } : {}),
   }))
   inputs.sort(compareInputs)
   return inputs

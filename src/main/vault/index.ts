@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { BTC_ESPLORA_DEFAULTS, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { decodeAddress, decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
+import { decodeAddress, decodeWif, DERIVATION_SCHEMES, exportAccountXpub, exportAccountXpubFor, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
 import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
@@ -18,14 +18,14 @@ import { ChainService } from '../wallet/ChainService'
 import { CoinService } from '../wallet/CoinService'
 import { CoinMetaStore } from '../wallet/coinMeta'
 import { ContactService } from '../wallet/ContactService'
-import { WalletMetaStore } from '../wallet/meta'
+import { indicesFor, WalletMetaStore } from '../wallet/meta'
 import { SendService } from '../wallet/SendService'
 import { signUnsignedTx } from '../wallet/signTx'
 import { SnapshotStore } from '../wallet/snapshot'
 import { gatherFromActive, type GatheredUtxo } from '../wallet/spendable'
 import { UpgradeService, type ConvertPlan, type ConvertRequest } from '../wallet/UpgradeService'
 import { UpgradeMetaStore } from '../wallet/upgradeStore'
-import { buildWatchDescriptor, encodeWatchDescriptor } from '../wallet/watchDescriptor'
+import { buildWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } from '../wallet/watchDescriptor'
 import { createWatchAddressSource, parseWatchInput, WatchSourceStore } from '../wallet/watchSource'
 import { basicAuthHeader, NodeAuthStore, type NodeAuth } from './nodeAuth'
 import { NodeConfigStore, normalizeNodeUrl, type NodeSettingsStored } from './nodeConfig'
@@ -356,7 +356,10 @@ export function createWalletCore(): WalletCore {
       }
       const stored = await new WatchSourceStore(new FileVaultStorage(join(walletDir(userData, id), 'watch.json')), vault).load()
       if (stored === null) return undefined
-      return stored.type === 'descriptor' ? addressFromXpub(parseAccountXpub(stored.descriptor.classicalXpub), 0, 0, NETWORK) : stored.addresses[0]
+      if (stored.type !== 'descriptor') return stored.addresses[0]
+      // The first section is the descriptor's primary scheme (active-first on export).
+      const [primary] = descriptorSchemes(stored.descriptor)
+      return primary !== undefined ? addressFromXpub(parseAccountXpub(primary.classicalXpub), 0, 0, NETWORK) : undefined
     } catch {
       return undefined
     }
@@ -536,9 +539,10 @@ export function createWalletCore(): WalletCore {
     return listWallets()
   }
 
-  // Build the active seed wallet's watch descriptor (account xpub + its Falcon address
-  // list) for sharing with a watch-only install. Requires the wallet unlocked; only a
-  // seed wallet has keys to derive from.
+  // Build the active seed wallet's watch descriptor (per scheme: account xpub + its
+  // Falcon address list; active scheme first, per the registry order) for sharing
+  // with a watch-only install. Requires the wallet unlocked; only a seed wallet has
+  // keys to derive from.
   const exportWatchDescriptor = async (): Promise<string> => {
     const id = registry.getActiveId()
     const entry = registry.get(id)
@@ -548,9 +552,15 @@ export function createWalletCore(): WalletCore {
     const descriptor = await buildWatchDescriptor({
       network: NETWORK,
       label: entry.label,
-      classicalXpub: exportAccountXpub(master, 0),
-      deriveFalcon: (chain, index) => deriveFalconAddress(master, { account: 0, chain, index, network: NETWORK }),
-      pqFloors: { receive: meta.pqReceiveIndex, change: meta.pqChangeIndex },
+      schemes: DERIVATION_SCHEMES.map((scheme) => {
+        const floors = indicesFor(meta, scheme.id)
+        return {
+          scheme: scheme.id,
+          classicalXpub: exportAccountXpubFor(master, scheme, 0),
+          deriveFalcon: (chain: 0 | 1, index: number) => deriveFalconAddress(master, { account: 0, chain, index, network: NETWORK, scheme }),
+          pqFloors: { receive: floors.pqReceiveIndex, change: floors.pqChangeIndex },
+        }
+      }),
     })
     return encodeWatchDescriptor(descriptor)
   }
@@ -766,7 +776,8 @@ function watchOnlySend(): SendOps {
 
 // Receive addresses for a watch wallet, read from its key-free source. A watch wallet
 // can be funded but can't advance derivation indices like a seed wallet, so "new"
-// returns the first receive address.
+// returns the first receive address. With a multi-scheme source, branches come
+// active-scheme-first, so `find` lands on the primary (receivable) branch.
 function watchReceiveOps(source: AddressSource): AddressOps {
   const receive = async (algo: AddressAlgo): Promise<string[]> => {
     const branch = (await source.branches()).find((b) => b.algo === algo)

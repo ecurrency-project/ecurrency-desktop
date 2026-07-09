@@ -30,7 +30,12 @@
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha256';
 
-import { activeScheme, derivePath, type HDKey } from './bip32';
+import {
+  activeScheme,
+  derivePath,
+  type DerivationScheme,
+  type HDKey,
+} from './bip32';
 import {
   FALCON512_SEED_BYTES,
   falcon512KeygenFromSeed,
@@ -65,8 +70,22 @@ export function nativePqPath(
   index: number,
   change: 0 | 1 = 0,
 ): string {
-  const coinType = activeScheme().coinType;
-  return `m/${PURPOSE_FALCON512}'/${coinType}'/${account}'/${change}'/${index}'`;
+  return nativePqPathFor(activeScheme(), account, index, change);
+}
+
+/**
+ * {@link nativePqPath} for an EXPLICIT scheme — used when deriving on a
+ * legacy scheme's branch (its coin_type differs from the active one). The
+ * path shape and the HKDF stage are identical across schemes; only the
+ * coin_type level changes.
+ */
+export function nativePqPathFor(
+  scheme: DerivationScheme,
+  account: number,
+  index: number,
+  change: 0 | 1 = 0,
+): string {
+  return `m/${PURPOSE_FALCON512}'/${scheme.coinType}'/${account}'/${change}'/${index}'`;
 }
 
 /**
@@ -78,6 +97,11 @@ export function nativePqPath(
  * under the {@link FALCON_HD_INFO} label; keygen is then fully
  * deterministic. The leaf key and the seed are wiped before returning.
  *
+ * `scheme` selects the coin_type level of the leaf path; it defaults to the
+ * active scheme. Discovery/signing on a legacy branch passes that branch's
+ * scheme explicitly. The HKDF info label is scheme-independent (versioned
+ * separately — see the header notes).
+ *
  * Returns `{ publicKey (897 B), privateKey (1281 B) }`.
  */
 export async function deriveFalconKeypair(
@@ -85,8 +109,9 @@ export async function deriveFalconKeypair(
   account: number,
   change: 0 | 1,
   index: number,
+  scheme: DerivationScheme = activeScheme(),
 ): Promise<Falcon512Keypair> {
-  const child = derivePath(master, nativePqPath(account, index, change));
+  const child = derivePath(master, nativePqPathFor(scheme, account, index, change));
   const ikm = child.privateKey;
   if (ikm === null) {
     // Unreachable from a seed-built master (hardened derivation already

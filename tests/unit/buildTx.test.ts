@@ -48,6 +48,23 @@ describe('buildSend', () => {
     expect(built.changeAtomic).toBe(0n)
   })
 
+  it("carries each input's derivation scheme into the unsigned tx (signer needs it)", () => {
+    const built = buildSend({
+      utxos: [],
+      manualInputs: [
+        { ...utxo('aa', 0, 3_000_000n), scheme: 'fake-v1' },
+        { ...utxo('bb', 0, 3_000_000n, 1) }, // no scheme (e.g. key wallet)
+      ],
+      recipient: RECIPIENT,
+      amountAtomic: 5_000_000n,
+      feeAtomic: 200n,
+      changeAddress: CHANGE,
+    })
+    const byTxid = new Map(built.unsigned.inputs.map((i) => [i.prevTxid, i]))
+    expect(byTxid.get('aa')!.scheme).toBe('fake-v1')
+    expect(byTxid.get('bb')!.scheme).toBeUndefined()
+  })
+
   it('sorts inputs into the canonical order (txid asc, then vout)', () => {
     const built = buildSend({
       utxos: [utxo('bb', 0, 1_000_000n, 5), utxo('aa', 1, 1_000_000n, 1), utxo('aa', 0, 1_000_000n, 0)],
