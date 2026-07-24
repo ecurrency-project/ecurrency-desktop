@@ -19,6 +19,14 @@ function fmtSat(sat: string): string {
   return formatToken(sat, SAT_DECIMALS)
 }
 
+/** Satoshi string → plain decimal string for an input value (no grouping). */
+function fromSat(sat: string): string {
+  const n = BigInt(sat)
+  const whole = (n / 100_000_000n).toString()
+  const frac = (n % 100_000_000n).toString().padStart(8, '0').replace(/0+$/, '')
+  return frac === '' ? whole : `${whole}.${frac}`
+}
+
 type Stage = 'form' | 'review' | 'sending' | 'done'
 
 export function Convert() {
@@ -191,17 +199,25 @@ export function Convert() {
                   <TextField
                     label={`Amount (${src})`}
                     mono
-                    value={convertAll ? '' : amount}
+                    // "All" shows the balance it will spend (the network fee is
+                    // subtracted at review, where the exact number is known).
+                    value={convertAll ? (hasFunds ? fromSat(confirmedSat) : '') : amount}
                     disabled={convertAll}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder={convertAll ? 'Entire balance (minus network fee)' : '0.0'}
                     aria-label={`Amount in ${src}`}
                   />
                 </div>
-                <Button variant={convertAll ? 'primary' : 'secondary'} style={{ height: 38 }} onClick={() => setConvertAll((v) => !v)}>
+                {/* Same height as .field (46px) so the row lines up. */}
+                <Button variant={convertAll ? 'primary' : 'secondary'} style={{ height: 46 }} onClick={() => setConvertAll((v) => !v)}>
                   {convertAll ? 'All ✓' : 'All'}
                 </Button>
               </div>
+              {convertAll && hasFunds && (
+                <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginTop: -6 }}>
+                  The network fee is subtracted from this amount at review.
+                </div>
+              )}
               <TextField
                 label={`Receive to (${brand.assetName} address)`}
                 mono
