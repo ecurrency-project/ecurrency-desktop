@@ -45,9 +45,11 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
   const [nav, setNav] = useState<Nav>('wallet')
   const [preselected, setPreselected] = useState<readonly string[]>([])
   // The footer's network selector: its label is the BUILD's network as reported
-  // by main; the dot carries the live connection status (green/amber/red/grey).
+  // by main (testnet tinted orange); the dot carries the live connection status
+  // (green/amber/red/grey).
   const netDot = nodeDotColor(useNodeStatus())
-  const netLabel = networkLabel(useBuildNetwork())
+  const buildNet = useBuildNetwork()
+  const netLabel = networkLabel(buildNet)
   // Which asset the Send pane composes. null = native coin (the sidebar/hero Send,
   // and coin-control); a token when opened from the Tokens panel.
   const [sendToken, setSendToken] = useState<TokenBalance | null>(null)
@@ -143,7 +145,7 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
       ) : (
         <button type="button" onClick={() => go('settings')} title="Network & connection" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
           <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flex: 'none', background: netDot, boxShadow: `0 0 0 3px color-mix(in srgb, ${netDot} 24%, transparent)` }} />
-          <span style={{ flex: 1, textAlign: 'left', fontSize: 13, color: 'var(--ink-700)', fontWeight: 500 }}>{netLabel}</span>
+          <span style={{ flex: 1, textAlign: 'left', fontSize: 13, color: buildNet === 'testnet' ? 'var(--warning)' : 'var(--ink-700)', fontWeight: 500 }}>{netLabel}</span>
           <span style={{ display: 'flex', color: 'var(--ink-500)' }}>
             <ChevDownIcon size={16} />
           </span>

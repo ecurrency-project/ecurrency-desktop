@@ -94,12 +94,14 @@ export function App() {
 
   // Title-bar connection chip: the dot mirrors the shared node status (green connected,
   // amber syncing, red offline, grey while checking/unknown) so an offline node doesn't
-  // read as healthy here. The label is the BUILD's network as reported by main.
-  const netName = networkLabel(useBuildNetwork())
+  // read as healthy here. The label is the BUILD's network as reported by main; a
+  // testnet profile is tinted orange so the two chains are never mistaken.
+  const buildNet = useBuildNetwork()
+  const netName = networkLabel(buildNet)
   const netLabel = node.status === null || node.checking ? netName : node.status.reachable !== true ? 'Offline' : node.status.syncing ? 'Syncing' : netName
   const center: ReactNode =
     route === 'wallet' ? (
-      <span className="titlebar-net">
+      <span className="titlebar-net" style={buildNet === 'testnet' ? { color: 'var(--warning)' } : undefined}>
         <span className="titlebar-net-dot" style={{ background: nodeDotColor(node) }} />
         {netLabel}
       </span>

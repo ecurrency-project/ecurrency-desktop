@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 export interface SegmentedOption<T extends string> {
   readonly value: T
   readonly label: ReactNode
+  /** Renders the segment greyed-out and unselectable (e.g. "coming soon"). */
+  readonly disabled?: boolean
 }
 
 // Single-select segmented control on a --well track; the active segment lifts to
@@ -28,7 +30,11 @@ export function Segmented<T extends string>({
           aria-selected={o.value === value}
           className="segmented-btn"
           data-active={o.value === value ? 'true' : undefined}
-          onClick={() => onChange(o.value)}
+          disabled={o.disabled === true}
+          style={o.disabled === true ? { opacity: 0.45, cursor: 'default' } : undefined}
+          onClick={() => {
+            if (o.disabled !== true) onChange(o.value)
+          }}
         >
           {o.label}
         </button>

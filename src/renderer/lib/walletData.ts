@@ -178,10 +178,55 @@ export interface NodeStatusSnapshot {
   readonly tip: number
 }
 
+// ─── Build network ───────────────────────────────────────────────────
+// Which chain this BUILD runs on. A process-lifetime constant reported by
+// main (NodeSettings.network): fetched once, then served from cache to every
+// consumer (title bar, sidebar footer). null until the first answer arrives.
+
+let buildNetwork: 'mainnet' | 'testnet' | null = null
+let buildNetworkPromise: Promise<void> | null = null
+const buildNetworkListeners = new Set<Listener>()
+
+function fetchBuildNetwork(): void {
+  buildNetworkPromise ??= wallet
+    .getNode()
+    .then((s) => {
+      buildNetwork = s.network
+      // The sync-target key is per network: adopt the right persisted value
+      // now that we know which one we are. Until this resolves the mainnet
+      // key is read — harmless, the tip is a cosmetic sync target.
+      setNodeSnap({ tip: readNodeTip() })
+      for (const listener of buildNetworkListeners) listener()
+    })
+    .catch(() => {
+      buildNetworkPromise = null // retry on the next mount
+    })
+}
+
+export function useBuildNetwork(): 'mainnet' | 'testnet' | null {
+  const sub = useCallback((l: Listener) => {
+    buildNetworkListeners.add(l)
+    if (buildNetwork === null) fetchBuildNetwork()
+    return () => buildNetworkListeners.delete(l)
+  }, [])
+  return useSyncExternalStore(sub, () => buildNetwork, () => buildNetwork)
+}
+
+/** Display label for a network ('…' while unknown). */
+export function networkLabel(network: 'mainnet' | 'testnet' | null): string {
+  return network === 'mainnet' ? 'Mainnet' : network === 'testnet' ? 'Testnet' : '…'
+}
+
+// Mainnet keeps the historical key (shipped installs must not lose their
+// persisted sync target); testnet gets a suffixed key so the two chains'
+// heights never mix.
 const NODE_TIP_KEY = 'wallet.tipHeight'
+function nodeTipKey(): string {
+  return buildNetwork === 'testnet' ? `${NODE_TIP_KEY}.testnet` : NODE_TIP_KEY
+}
 function readNodeTip(): number {
   try {
-    const v = Number(window.localStorage.getItem(NODE_TIP_KEY))
+    const v = Number(window.localStorage.getItem(nodeTipKey()))
     return Number.isFinite(v) && v > 0 ? v : 0
   } catch {
     return 0
@@ -200,7 +245,7 @@ function setNodeSnap(patch: Partial<NodeStatusSnapshot>): void {
 function recordTip(s: NodeStatus): number {
   if (s.blockHeight !== undefined && s.blockHeight > nodeSnap.tip) {
     try {
-      window.localStorage.setItem(NODE_TIP_KEY, String(s.blockHeight))
+      window.localStorage.setItem(nodeTipKey(), String(s.blockHeight))
     } catch {
       // Non-fatal: the target just won't persist across restarts.
     }
@@ -215,39 +260,6 @@ export function useNodeStatus(): NodeStatusSnapshot {
     return () => nodeListeners.delete(l)
   }, [])
   return useSyncExternalStore(sub, () => nodeSnap, () => nodeSnap)
-}
-
-// ─── Build network ───────────────────────────────────────────────────
-// Which chain this BUILD runs on. A process-lifetime constant reported by
-// main (NodeSettings.network): fetched once, then served from cache to every
-// consumer (title bar, sidebar footer). null until the first answer arrives.
-
-let buildNetwork: 'mainnet' | 'testnet' | null = null
-let buildNetworkPromise: Promise<void> | null = null
-const buildNetworkListeners = new Set<Listener>()
-
-export function useBuildNetwork(): 'mainnet' | 'testnet' | null {
-  const sub = useCallback((l: Listener) => {
-    buildNetworkListeners.add(l)
-    if (buildNetwork === null) {
-      buildNetworkPromise ??= wallet
-        .getNode()
-        .then((s) => {
-          buildNetwork = s.network
-          for (const listener of buildNetworkListeners) listener()
-        })
-        .catch(() => {
-          buildNetworkPromise = null // retry on the next mount
-        })
-    }
-    return () => buildNetworkListeners.delete(l)
-  }, [])
-  return useSyncExternalStore(sub, () => buildNetwork, () => buildNetwork)
-}
-
-/** Display label for a network ('…' while unknown). */
-export function networkLabel(network: 'mainnet' | 'testnet' | null): string {
-  return network === 'mainnet' ? 'Mainnet' : network === 'testnet' ? 'Testnet' : '…'
 }
 
 // Poll cadence: a healthy node is re-checked often; an unreachable one is backed off

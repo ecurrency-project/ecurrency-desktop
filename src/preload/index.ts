@@ -103,6 +103,7 @@ const api: WalletApi = {
   clearOwnNode: () => request<NodeSettings>({ type: 'node.clearOwn' }),
   setTor: (enabled) => request<NodeSettings>({ type: 'node.setTor', enabled }),
   nodeStatus: () => request<NodeStatus>({ type: 'node.status' }),
+  setNetwork: (network) => request<void>({ type: 'network.set', network }),
   upgradeInfo: () => request<UpgradeInfo>({ type: 'upgrade.info' }),
   upgradeStatus: () => request<UpgradeStatusView>({ type: 'upgrade.status' }),
   upgradePlan: (req) => request<UpgradePlanView>({ type: 'upgrade.plan', req }),

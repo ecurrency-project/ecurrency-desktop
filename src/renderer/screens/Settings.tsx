@@ -229,28 +229,63 @@ function TorRow() {
   )
 }
 
-// Network indicator — the chain is a compile-time build constant, so the
-// control is read-only; it reflects what main reports instead of pretending
-// mainnet. Custom stays for a possible future regtest profile.
+// Network switch. The network is a per-process profile: choosing the other
+// chain persists the choice and RESTARTS the app (a session is never
+// multi-network). Each network keeps its own wallets/settings on disk;
+// nothing is deleted by switching. Custom stays for a future regtest profile.
 function NetworkRow({ network }: { network?: 'mainnet' | 'testnet' }) {
+  const [target, setTarget] = useState<'mainnet' | 'testnet' | null>(null)
+  const [switching, setSwitching] = useState(false)
+
+  const confirmSwitch = (): void => {
+    if (target === null) return
+    setSwitching(true)
+    // Fire-and-forget: main writes the profile and relaunches the app.
+    void wallet.setNetwork(target).catch(() => setSwitching(false))
+  }
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--ink-900)' }}>Network</div>
-        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 2 }}>Fixed per build — this wallet runs on {network ?? '…'}</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 2 }}>Switching restarts the app; each network keeps its own wallets</div>
       </div>
-      <div style={{ opacity: 0.6, pointerEvents: 'none' }}>
-        <Segmented<'mainnet' | 'testnet' | 'custom'>
-          ariaLabel="Network"
-          value={network ?? 'mainnet'}
-          onChange={() => {}}
-          options={[
-            { value: 'mainnet', label: 'Mainnet' },
-            { value: 'testnet', label: 'Testnet' },
-            { value: 'custom', label: 'Custom' },
-          ]}
-        />
-      </div>
+      <Segmented<'mainnet' | 'testnet' | 'custom'>
+        ariaLabel="Network"
+        value={network ?? 'mainnet'}
+        onChange={(v) => {
+          if (v !== 'custom' && network !== undefined && v !== network) setTarget(v)
+        }}
+        options={[
+          { value: 'mainnet', label: 'Mainnet' },
+          { value: 'testnet', label: 'Testnet' },
+          { value: 'custom', label: 'Custom', disabled: true },
+        ]}
+      />
+      <Modal
+        open={target !== null}
+        onClose={() => {
+          if (!switching) setTarget(null)
+        }}
+        title={`Switch to ${target === 'testnet' ? 'Testnet' : 'Mainnet'}?`}
+        subtitle="The app will restart on the selected network."
+        footer={
+          <>
+            <Button variant="secondary" disabled={switching} onClick={() => setTarget(null)}>
+              Cancel
+            </Button>
+            <Button disabled={switching} onClick={confirmSwitch}>
+              {switching ? 'Restarting…' : 'Switch & restart'}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-700)', lineHeight: 1.55 }}>
+          Wallets, contacts and node settings are kept separately per network. Nothing is
+          deleted: everything from the current network stays on this computer and reappears
+          when you switch back.
+        </p>
+      </Modal>
     </div>
   )
 }
