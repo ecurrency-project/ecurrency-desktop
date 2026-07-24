@@ -359,6 +359,8 @@ export interface NodeSettings {
   readonly publicUrl: string
   readonly ownUrl?: string
   readonly tor: boolean
+  /** Which chain this BUILD runs on (compile-time constant, not a user setting). */
+  readonly network: 'mainnet' | 'testnet'
   /** Whether the own node has Basic-auth credentials stored (the password is never returned). */
   readonly hasAuth: boolean
   /** The own-node Basic-auth username, if set (not a secret); for prefilling the form. */

@@ -109,11 +109,11 @@ const SWEEP: SweepOps = {
 }
 
 const NODE: NodeOps = {
-  get: () => ({ selected: 'public', publicUrl: 'https://api.example.org', tor: false, hasAuth: false }),
-  select: async (kind) => ({ selected: kind, publicUrl: 'https://api.example.org', tor: false, hasAuth: false }),
-  setOwn: async (url, user) => ({ selected: 'own', publicUrl: 'https://api.example.org', ownUrl: url, tor: false, hasAuth: user !== undefined }),
-  clearOwn: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', tor: false, hasAuth: false }),
-  setTor: (enabled) => ({ selected: 'public', publicUrl: 'https://api.example.org', tor: enabled, hasAuth: false }),
+  get: () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: false, hasAuth: false }),
+  select: async (kind) => ({ selected: kind, publicUrl: 'https://api.example.org', network: 'mainnet', tor: false, hasAuth: false }),
+  setOwn: async (url, user) => ({ selected: 'own', publicUrl: 'https://api.example.org', network: 'mainnet', ownUrl: url, tor: false, hasAuth: user !== undefined }),
+  clearOwn: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: false, hasAuth: false }),
+  setTor: (enabled) => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: enabled, hasAuth: false }),
   status: async () => ({ url: 'https://api.example.org', reachable: true, chain: 'main', blockHeight: 1, syncing: false, latencyMs: 5 }),
 }
 

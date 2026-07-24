@@ -117,7 +117,7 @@ function NetworkCard() {
       <NodeSlot icon={<BoltIcon size={18} />} name="Electrum server" detail="Coming soon · SSL" disabled />
       <NodeStatusRow snap={node} onRetry={() => void probeNode()} />
       <TorRow />
-      <NetworkRow />
+      <NetworkRow network={settings?.network} />
       <NetworkFootnote />
       <EditOwnNodeModal open={editing} settings={settings} onClose={() => setEditing(false)} onChanged={applySettings} />
     </SectionCard>
@@ -229,18 +229,20 @@ function TorRow() {
   )
 }
 
-// Network switch — Mainnet only for now; testnet/custom shown but not yet wired.
-function NetworkRow() {
+// Network indicator — the chain is a compile-time build constant, so the
+// control is read-only; it reflects what main reports instead of pretending
+// mainnet. Custom stays for a possible future regtest profile.
+function NetworkRow({ network }: { network?: 'mainnet' | 'testnet' }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderTop: '1px solid var(--border)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--ink-900)' }}>Network</div>
-        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 2 }}>Switch chains for testing</div>
+        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 2 }}>Fixed per build — this wallet runs on {network ?? '…'}</div>
       </div>
       <div style={{ opacity: 0.6, pointerEvents: 'none' }}>
         <Segmented<'mainnet' | 'testnet' | 'custom'>
           ariaLabel="Network"
-          value="mainnet"
+          value={network ?? 'mainnet'}
           onChange={() => {}}
           options={[
             { value: 'mainnet', label: 'Mainnet' },
