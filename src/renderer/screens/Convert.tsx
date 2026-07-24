@@ -32,7 +32,10 @@ type Stage = 'form' | 'review' | 'sending' | 'done'
 
 export function Convert() {
   const up = brand.upgrade
-  const src = up?.sourceCoinLabel ?? 'BTC'
+  // Everything below labels the source coin per the BUILD's network (tBTC
+  // on testnet) so test coins are never presented as the real thing.
+  const buildNet = useBuildNetwork()
+  const src = up?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'
   const [status, setStatus] = useState<UpgradeStatusView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   // null = unknown / not reported (old node, unreachable); false = still syncing.
@@ -140,7 +143,6 @@ export function Convert() {
 
   // Source-chain explorer link for the BUILD's network (a testnet profile
   // must never open a mainnet explorer). Hidden until the network is known.
-  const buildNet = useBuildNetwork()
   const explorerTxBase = buildNet !== null ? (up?.sourceExplorerTxUrl?.[buildNet] ?? null) : null
 
   return (
