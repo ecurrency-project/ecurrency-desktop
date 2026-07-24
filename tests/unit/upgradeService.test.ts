@@ -67,6 +67,14 @@ describe('staging derivation', () => {
     expect(deriveBtcStagingAddress(MASTER, 0, 'mainnet')).toBe(ADDR0)
     expect(deriveBtcStagingAddress(MASTER, 1, 'mainnet')).toBe(ADDR1)
   })
+
+  it('testnet uses the standard BIP-44 testnet branch (coin type 1)', () => {
+    // Golden vectors of the test mnemonic at m/44'/1'/0'/0/i — the same
+    // addresses Electrum/Sparrow restore in testnet mode.
+    expect(btcStagingPath(0, 'testnet')).toBe("m/44'/1'/0'/0/0")
+    expect(deriveBtcStagingAddress(MASTER, 0, 'testnet')).toBe('mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV')
+    expect(deriveBtcStagingAddress(MASTER, 1, 'testnet')).toBe('mzpbWabUQm1w8ijuJnAof5eiSTep27deVH')
+  })
 })
 
 describe('status', () => {

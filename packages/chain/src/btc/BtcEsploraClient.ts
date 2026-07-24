@@ -22,6 +22,20 @@ export const BTC_ESPLORA_DEFAULTS: readonly string[] = [
   'https://mempool.space/api',
 ];
 
+/**
+ * Testnet counterpart. NOTE: the node's BTC side is **testnet4** (not
+ * testnet3), so blockstream.info's `/testnet/api` (testnet3) is NOT
+ * usable here — mempool.space is currently the only public instance.
+ */
+export const BTC_ESPLORA_TESTNET_DEFAULTS: readonly string[] = [
+  'https://mempool.space/testnet4/api',
+];
+
+/** Default endpoint list for a Bitcoin network. */
+export function btcEsploraDefaultsFor(network: 'mainnet' | 'testnet'): readonly string[] {
+  return network === 'testnet' ? BTC_ESPLORA_TESTNET_DEFAULTS : BTC_ESPLORA_DEFAULTS;
+}
+
 export interface BtcUtxo {
   readonly txid: string;
   readonly vout: number;

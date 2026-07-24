@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { BTC_ESPLORA_DEFAULTS, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
+import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
 import { decodeAddress, decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
@@ -162,8 +162,9 @@ export function createWalletCore(): WalletCore {
         upgradeSvc = new UpgradeService(
           keyVault,
           new UpgradeMetaStore(new FileVaultStorage(wf('upgrade.json')), vault),
-          new BtcEsploraClient({ baseUrl: BTC_ESPLORA_DEFAULTS[0]! }),
-          UPGRADE,
+          new BtcEsploraClient({ baseUrl: btcEsploraDefaultsFor(NETWORK)[0]! }),
+          UPGRADE[NETWORK],
+          NETWORK,
         )
       }
       addressSource = source
@@ -638,7 +639,15 @@ export function createWalletCore(): WalletCore {
     const t0 = Date.now()
     try {
       const s = await chainClient.getNodeStatus()
-      return { url, reachable: true, chain: s.chain, blockHeight: s.blocks, syncing: s.initialBlockDownload, latencyMs: Date.now() - t0 }
+      return {
+        url,
+        reachable: true,
+        chain: s.chain,
+        blockHeight: s.blocks,
+        syncing: s.initialBlockDownload,
+        latencyMs: Date.now() - t0,
+        ...(s.btcSynced !== undefined ? { btcSynced: s.btcSynced } : {}),
+      }
     } catch {
       return { url, reachable: false }
     }

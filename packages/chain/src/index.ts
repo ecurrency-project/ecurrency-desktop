@@ -32,6 +32,8 @@ export {
 export type { TransportOptions } from './transport';
 export {
   BTC_ESPLORA_DEFAULTS,
+  BTC_ESPLORA_TESTNET_DEFAULTS,
+  btcEsploraDefaultsFor,
   BtcEsploraClient,
   type BtcEsploraConfig,
   type BtcHistoryOutput,
