@@ -568,11 +568,12 @@ export function createWalletCore(): WalletCore {
   // own-node URL if set, and the Tor flag.
   const nodeSettings = (): NodeSettings => {
     const s = nodeConfig.getSettings()
-    const out: { selected: NodeKind; publicUrl: string; ownUrl?: string; tor: boolean; hasAuth: boolean; authUser?: string } = {
+    const out: { selected: NodeKind; publicUrl: string; ownUrl?: string; tor: boolean; hasAuth: boolean; authUser?: string; network: typeof NETWORK } = {
       selected: s.selected,
       publicUrl: PUBLIC_URL,
       tor: s.tor,
       hasAuth: ownAuth !== null,
+      network: NETWORK,
     }
     if (s.ownUrl !== undefined) out.ownUrl = s.ownUrl
     if (ownAuth?.user !== undefined && ownAuth.user !== '') out.authUser = ownAuth.user
@@ -605,7 +606,10 @@ export function createWalletCore(): WalletCore {
     const auth: NodeAuth | null = replacing ? (user !== undefined && user !== '' ? { user, password } : { password }) : ownAuth
     const authHeader = auth !== null ? basicAuthHeader(auth) : undefined
     const status = await new ChainClient({ network: NETWORK, endpoints: endpointsFor({ selected: 'own', ownUrl: url, tor: false }), transport: authHeader !== undefined ? { authHeader } : undefined }).getNodeStatus()
-    if (status.chain !== 'main') throw new Error(`That node serves ${status.chain}, not mainnet.`)
+    // The node reports "main" / "testnet" / "regtest"; hold it against the
+    // network THIS build runs on, not a hardcoded mainnet.
+    const expectedChain = NETWORK === 'mainnet' ? 'main' : 'testnet'
+    if (status.chain !== expectedChain) throw new Error(`That node serves ${status.chain ?? 'an unknown chain'}, but this wallet runs on ${NETWORK}.`)
     if (replacing) {
       await nodeAuthStore.save(auth as NodeAuth)
       ownAuth = auth
