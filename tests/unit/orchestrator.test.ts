@@ -115,6 +115,7 @@ const NODE: NodeOps = {
   clearOwn: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: false, hasAuth: false }),
   setTor: (enabled) => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: enabled, hasAuth: false }),
   status: async () => ({ url: 'https://api.example.org', reachable: true, chain: 'main', blockHeight: 1, syncing: false, latencyMs: 5 }),
+  setNetwork: async () => {},
 }
 
 const UPGRADE_OPS: UpgradeOps = {

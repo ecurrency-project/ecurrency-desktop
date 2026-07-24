@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { decodeAddress, decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey } from '@qbitcoin/crypto'
+import { decodeAddress, decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
 import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
@@ -27,6 +27,7 @@ import { UpgradeService, type ConvertPlan, type ConvertRequest } from '../wallet
 import { UpgradeMetaStore } from '../wallet/upgradeStore'
 import { buildSeedWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } from '../wallet/watchDescriptor'
 import { createWatchAddressSource, parseWatchInput, WatchSourceStore } from '../wallet/watchSource'
+import { dataRootFor, readNetworkProfile, writeNetworkProfile } from './networkProfile'
 import { basicAuthHeader, NodeAuthStore, type NodeAuth } from './nodeAuth'
 import { NodeConfigStore, normalizeNodeUrl, type NodeSettingsStored } from './nodeConfig'
 import { VaultOrchestrator, type AddressOps, type ChainOps, type CoinOps, type SendOps } from './orchestrator'
@@ -37,9 +38,6 @@ import { FileVaultStorage } from './storage'
 // long-lived main process its setTimeout is reliable (no service-worker death).
 const AUTO_LOCK_MS = 5 * 60 * 1000
 
-// Network the wallet operates on. The default node list only serves mainnet
-// today; network selection becomes a setting later.
-const NETWORK = 'mainnet' as const
 
 export interface WalletCore {
   readonly vault: Vault
@@ -65,9 +63,17 @@ interface WalletSession {
 // Build the Vault (sole owner of the decrypted seed) and the orchestrator that fronts
 // the active wallet's services. Call after the app is ready — it resolves userData.
 export function createWalletCore(): WalletCore {
+  // Which network this PROCESS runs on — decided once, at startup, by the
+  // profile file in the real userData root. Switching networks writes the
+  // profile and relaunches; a session is never multi-network.
+  const userDataBase = app.getPath('userData')
+  const NETWORK = readNetworkProfile(userDataBase)
+  // Everything below lives under the network-scoped root: mainnet keeps the
+  // historical flat layout (paths must not move — shipped wallets), testnet
+  // is an isolated subtree.
+  const userData = dataRootFor(userDataBase, NETWORK)
   // Pre-multi-wallet installs kept their files flat under userData; migrate them under
   // wallets/<id>/ once, then resolve the registry. The address book stays global.
-  const userData = app.getPath('userData')
   migrateLegacyLayout(userData)
   const registry = new WalletRegistry(join(userData, 'wallets.json'))
 
@@ -657,6 +663,18 @@ export function createWalletCore(): WalletCore {
     }
   }
 
+  // Switch the network profile. A switch IS a restart: the whole session
+  // (chain client, address derivation, storage roots) is built for exactly
+  // one network at startup, so we persist the choice and relaunch. The
+  // relaunched process reads the new profile and uses its scoped data root;
+  // the other network's wallets stay on disk, hidden until switched back.
+  const setNetwork = async (next: Network): Promise<void> => {
+    if (next === NETWORK) return
+    writeNetworkProfile(userDataBase, next)
+    app.relaunch()
+    app.quit()
+  }
+
   // Held drafts and cached metadata must not survive a lock — confirming across a lock
   // would sign something reviewed in a different session.
   vault.on((event) => {
@@ -738,7 +756,7 @@ export function createWalletCore(): WalletCore {
     contacts,
     wallets: { list: listWallets, add: addWatchWallet, addSeed: addSeedWallet, inspectKey, addKey: addKeyWallet, restore: restoreFromMnemonic, switch: switchWallet, rename: renameWallet, remove: removeWallet, exportDescriptor: exportWatchDescriptor },
     sweep: { scan: sweepScan, build: sweepBuild, confirm: sweepConfirm, cancel: disposeSweep },
-    node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, setTor, status: nodeStatus },
+    node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, setTor, status: nodeStatus, setNetwork },
     upgrade: {
       info: async () => ({ enabled: active.upgrade !== null }),
       status: async () => {

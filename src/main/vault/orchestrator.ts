@@ -135,6 +135,8 @@ export interface NodeOps {
   clearOwn(): Promise<NodeSettings>
   setTor(enabled: boolean): NodeSettings | Promise<NodeSettings>
   status(): Promise<NodeStatus>
+  /** Persist the network profile and relaunch (no-op if already active). */
+  setNetwork(network: 'mainnet' | 'testnet'): Promise<void>
 }
 
 // BTC→native upgrade operations. Implemented in main; on brands without an
@@ -291,6 +293,8 @@ export class VaultOrchestrator {
           return ok(await this.deps.node.setTor(request.enabled))
         case 'node.status':
           return ok(await this.deps.node.status())
+        case 'network.set':
+          return ok(await this.deps.node.setNetwork(request.network))
         case 'upgrade.info':
           return ok(await this.deps.upgrade.info())
         case 'upgrade.status':

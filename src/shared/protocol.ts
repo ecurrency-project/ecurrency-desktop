@@ -88,6 +88,7 @@ export type VaultRequest =
   | { readonly type: 'node.clearOwn' }
   | { readonly type: 'node.setTor'; readonly enabled: boolean }
   | { readonly type: 'node.status' }
+  | { readonly type: 'network.set'; readonly network: 'mainnet' | 'testnet' }
   | { readonly type: 'upgrade.info' }
   | { readonly type: 'upgrade.status' }
   | { readonly type: 'upgrade.plan'; readonly req: UpgradeConvertRequest }
@@ -507,6 +508,12 @@ export interface WalletApi {
   setTor(enabled: boolean): Promise<NodeSettings>
   /** Live status of the active endpoint (height, syncing, latency) for the indicator. */
   nodeStatus(): Promise<NodeStatus>
+  /**
+   * Switch the network profile. Persists the choice and RELAUNCHES the app —
+   * the promise never resolves usefully; treat the call as fire-and-forget.
+   * A no-op when `network` is already the active one.
+   */
+  setNetwork(network: 'mainnet' | 'testnet'): Promise<void>
   /** Whether the BTC→native upgrade flow is available (brand + wallet kind). */
   upgradeInfo(): Promise<UpgradeInfo>
   /** Staging address, balances and episode history of the upgrade flow. Requires unlocked. */
