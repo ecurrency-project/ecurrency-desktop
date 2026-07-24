@@ -4,6 +4,7 @@ import type { UpgradePlanView, UpgradeStatusView } from '../../shared/protocol'
 import { brand } from '../brand'
 import { formatToken } from '../lib/format'
 import { wallet } from '../lib/wallet'
+import { useBuildNetwork } from '../lib/walletData'
 import { AlertIcon, Button, CheckIcon, CopyIcon, Screen, TextField } from '../ui'
 
 // Convert: the source-chain → native upgrade flow (design:
@@ -136,6 +137,11 @@ export function Convert() {
 
   const confirmedSat = status?.confirmedBalanceSat ?? '0'
   const hasFunds = BigInt(confirmedSat) > 0n
+
+  // Source-chain explorer link for the BUILD's network (a testnet profile
+  // must never open a mainnet explorer). Hidden until the network is known.
+  const buildNet = useBuildNetwork()
+  const explorerTxBase = buildNet !== null ? (up?.sourceExplorerTxUrl?.[buildNet] ?? null) : null
 
   return (
     <Screen center>
@@ -311,12 +317,12 @@ export function Convert() {
                 <span style={{ fontSize: 11.5, color: e.confirmed ? 'var(--ink-500)' : 'var(--warning)', flex: 'none' }}>
                   {e.confirmed ? `confirmed${e.blockHeight !== undefined ? ` · ${String(e.blockHeight)}` : ''}` : 'pending'}
                 </span>
-                {up?.sourceExplorerTxUrl != null && (
+                {explorerTxBase !== null && (
                   <button
                     type="button"
                     className="content-refresh"
                     style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}
-                    onClick={() => window.open(`${up.sourceExplorerTxUrl ?? ''}${e.txid}`, '_blank', 'noopener')}
+                    onClick={() => window.open(`${explorerTxBase}${e.txid}`, '_blank', 'noopener')}
                   >
                     Explorer
                   </button>

@@ -31,8 +31,12 @@ export interface BrandConfig {
   upgrade: {
     /** Ticker of the source chain being converted from, e.g. "BTC". */
     sourceCoinLabel: string
-    /** Explorer tx URL prefix of the SOURCE chain, or null. */
-    sourceExplorerTxUrl: string | null
+    /**
+     * Explorer tx URL prefix of the SOURCE chain per NATIVE network the
+     * wallet runs on (the source chain follows it: native testnet locks on
+     * the source testnet), or null when no public explorer exists.
+     */
+    sourceExplorerTxUrl: Readonly<Record<'mainnet' | 'testnet', string>> | null
   } | null
 }
 
