@@ -330,7 +330,7 @@ export class EsploraClient {
   /** `GET /api/status` → node sync state (chain, height, syncing). The node
    *  exposes this on both the public and a self-hosted endpoint. */
   async getNodeStatus(): Promise<NodeStatus> {
-    const raw = await request<{ chain?: unknown; blocks?: unknown; initialblockdownload?: unknown }>(
+    const raw = await request<{ chain?: unknown; blocks?: unknown; initialblockdownload?: unknown; btc_synced?: unknown }>(
       { url: `${this.endpoint.url}/api/status`, expect: 'json' },
       this.transportOpts,
     );
@@ -338,6 +338,8 @@ export class EsploraClient {
       chain: typeof raw.chain === 'string' ? raw.chain : 'main',
       blocks: typeof raw.blocks === 'number' && Number.isFinite(raw.blocks) ? raw.blocks : -1,
       initialBlockDownload: raw.initialblockdownload === true,
+      // Only upgrade-capable nodes report it; absent = not applicable.
+      ...(typeof raw.btc_synced === 'boolean' ? { btcSynced: raw.btc_synced } : {}),
     };
   }
 

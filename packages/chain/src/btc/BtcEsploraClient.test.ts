@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ChainError } from '../errors';
-import { BTC_ESPLORA_DEFAULTS, BtcEsploraClient } from './BtcEsploraClient';
+import { BTC_ESPLORA_DEFAULTS, BTC_ESPLORA_TESTNET_DEFAULTS, btcEsploraDefaultsFor, BtcEsploraClient } from './BtcEsploraClient';
 
 const BASE = 'https://btc.example.org/api';
 
@@ -23,6 +23,17 @@ describe('BtcEsploraClient', () => {
   it('ships sane public defaults', () => {
     expect(BTC_ESPLORA_DEFAULTS.length).toBeGreaterThan(0);
     for (const url of BTC_ESPLORA_DEFAULTS) expect(url).toMatch(/^https:\/\//);
+  });
+
+  it('selects the network default lists (testnet = testnet4 instances)', () => {
+    expect(btcEsploraDefaultsFor('mainnet')).toBe(BTC_ESPLORA_DEFAULTS);
+    expect(btcEsploraDefaultsFor('testnet')).toBe(BTC_ESPLORA_TESTNET_DEFAULTS);
+    expect(BTC_ESPLORA_TESTNET_DEFAULTS.length).toBeGreaterThan(0);
+    for (const url of BTC_ESPLORA_TESTNET_DEFAULTS) {
+      expect(url).toMatch(/^https:\/\//);
+      // The node's BTC side is testnet4 — a plain /testnet/ (testnet3) URL is a bug.
+      expect(url).toContain('testnet4');
+    }
   });
 
   it('tipHeight parses the plain-text number', async () => {

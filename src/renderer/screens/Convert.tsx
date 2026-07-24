@@ -26,6 +26,8 @@ export function Convert() {
   const src = up?.sourceCoinLabel ?? 'BTC'
   const [status, setStatus] = useState<UpgradeStatusView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // null = unknown / not reported (old node, unreachable); false = still syncing.
+  const [btcSynced, setBtcSynced] = useState<boolean | null>(null)
   const [copied, setCopied] = useState(false)
 
   // Compose state.
@@ -51,6 +53,12 @@ export function Convert() {
         setLoadError(null)
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)))
+    // The node ignores upgrade transactions until its BTC chain is synced —
+    // surface that so a deposit/convert isn't mistaken for a lost credit.
+    wallet
+      .nodeStatus()
+      .then((n) => setBtcSynced(n.reachable ? (n.btcSynced ?? null) : null))
+      .catch(() => setBtcSynced(null))
   }, [])
 
   // Load status + prefill the destination with the wallet's own PQ address —
@@ -125,6 +133,19 @@ export function Convert() {
     <Screen center>
       <div style={{ maxWidth: 520, width: '100%', margin: '32px auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loadError !== null && <div className="field-hint field-hint--error">{loadError}</div>}
+
+        {btcSynced === false && (
+          <div
+            role="status"
+            style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--card)', border: '1px solid var(--warning)', borderRadius: 12, padding: '12px 14px', fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.5 }}
+          >
+            <AlertIcon size={16} />
+            <span>
+              The {brand.assetLabel} node is still syncing the {src} chain. You can deposit and convert now, but the
+              network will only credit conversions after that sync completes — expect a delay.
+            </span>
+          </div>
+        )}
 
         {/* Deposit */}
         <section style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20 }}>

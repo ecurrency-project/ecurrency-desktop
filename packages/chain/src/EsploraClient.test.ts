@@ -522,3 +522,22 @@ describe('ChainError', () => {
     expect(err.status).toBe(500);
   });
 });
+
+describe('EsploraClient.getNodeStatus', () => {
+  it('parses sync state and the optional btc_synced flag', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ chain: 'main', blocks: 123, initialblockdownload: false, btc_synced: false }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ chain: 'main', blocks: 124, initialblockdownload: false }));
+    const client = makeClient(fetchImpl as typeof fetch);
+    // Upgrade-capable node: the flag comes through as a boolean…
+    const withFlag = await client.getNodeStatus();
+    expect(withFlag.blocks).toBe(123);
+    expect(withFlag.btcSynced).toBe(false);
+    // …a node without upgrade support simply doesn't report it.
+    const withoutFlag = await client.getNodeStatus();
+    expect(withoutFlag.btcSynced).toBeUndefined();
+  });
+});

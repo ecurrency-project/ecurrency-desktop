@@ -191,6 +191,12 @@ export interface NodeStatus {
   readonly blocks: number;
   /** True while the node is still syncing (Esplora `initialblockdownload`). */
   readonly initialBlockDownload: boolean;
+  /**
+   * Whether the node has finished syncing the BITCOIN chain (upgrade-capable
+   * nodes ignore upgrade txs until it has). Absent when the node doesn't
+   * report it (no upgrade support).
+   */
+  readonly btcSynced?: boolean;
 }
 
 // ─── Broadcast result ────────────────────────────────────────────────

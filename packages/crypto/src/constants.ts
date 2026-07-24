@@ -95,7 +95,13 @@ export interface UpgradeChainConfig {
   readonly fallbackFeeRate: number;
 }
 
-export const UPGRADE: UpgradeChainConfig | null = null;
+/**
+ * Per-network upgrade parameters, keyed by the NATIVE network the wallet
+ * runs on. The node derives its BTC lock script per network (mainnet
+ * locks on Bitcoin mainnet, testnet on Bitcoin testnet4), so the lock
+ * script — and potentially the limits — differ between the two.
+ */
+export const UPGRADE: Readonly<Record<Network, UpgradeChainConfig>> | null = null;
 
 /**
  * SIGHASH types accepted by the protocol. The wallet only ever emits

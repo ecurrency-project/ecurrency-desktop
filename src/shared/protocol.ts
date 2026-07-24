@@ -374,6 +374,8 @@ export interface NodeStatus {
   readonly blockHeight?: number
   readonly syncing?: boolean
   readonly latencyMs?: number
+  /** Upgrade-capable nodes only: whether the node's BTC chain is synced. */
+  readonly btcSynced?: boolean
 }
 
 // How the user supplies a watch wallet to add: a descriptor token, a bare account
