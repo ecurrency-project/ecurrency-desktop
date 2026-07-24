@@ -217,6 +217,39 @@ export function useNodeStatus(): NodeStatusSnapshot {
   return useSyncExternalStore(sub, () => nodeSnap, () => nodeSnap)
 }
 
+// ─── Build network ───────────────────────────────────────────────────
+// Which chain this BUILD runs on. A process-lifetime constant reported by
+// main (NodeSettings.network): fetched once, then served from cache to every
+// consumer (title bar, sidebar footer). null until the first answer arrives.
+
+let buildNetwork: 'mainnet' | 'testnet' | null = null
+let buildNetworkPromise: Promise<void> | null = null
+const buildNetworkListeners = new Set<Listener>()
+
+export function useBuildNetwork(): 'mainnet' | 'testnet' | null {
+  const sub = useCallback((l: Listener) => {
+    buildNetworkListeners.add(l)
+    if (buildNetwork === null) {
+      buildNetworkPromise ??= wallet
+        .getNode()
+        .then((s) => {
+          buildNetwork = s.network
+          for (const listener of buildNetworkListeners) listener()
+        })
+        .catch(() => {
+          buildNetworkPromise = null // retry on the next mount
+        })
+    }
+    return () => buildNetworkListeners.delete(l)
+  }, [])
+  return useSyncExternalStore(sub, () => buildNetwork, () => buildNetwork)
+}
+
+/** Display label for a network ('…' while unknown). */
+export function networkLabel(network: 'mainnet' | 'testnet' | null): string {
+  return network === 'mainnet' ? 'Mainnet' : network === 'testnet' ? 'Testnet' : '…'
+}
+
 // Poll cadence: a healthy node is re-checked often; an unreachable one is backed off
 // to once a minute so we don't hammer a dead endpoint. The next-due time gates the
 // shared poll loop; an explicit Retry / visibility-return polls immediately regardless.

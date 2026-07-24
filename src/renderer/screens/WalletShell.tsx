@@ -3,7 +3,7 @@ import type { TokenBalance } from '../../shared/protocol'
 import { brand } from '../brand'
 import { WalletSwitcher } from '../components/WalletSwitcher'
 import { wallet } from '../lib/wallet'
-import { hydrateFromSnapshot, loadWallets, nodeDotColor, refreshAll, useNodeStatus } from '../lib/walletData'
+import { hydrateFromSnapshot, loadWallets, networkLabel, nodeDotColor, refreshAll, useBuildNetwork, useNodeStatus } from '../lib/walletData'
 import { ActivityIcon, AtomIcon, BoltIcon, ChevDownIcon, CoinsIcon, LockIcon, ReceiveIcon, RefreshIcon, SendIcon, SettingsIcon, Sidebar, WalletIcon, type NavItem } from '../ui'
 import { Activity } from './Activity'
 import { Coins } from './Coins'
@@ -44,10 +44,10 @@ const PAGE_META: Record<Nav, { title: string; subtitle: string }> = {
 export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
   const [nav, setNav] = useState<Nav>('wallet')
   const [preselected, setPreselected] = useState<readonly string[]>([])
-  // The footer's network selector: its label is the network name (only mainnet is wired
-  // today); the dot carries the live connection status (green/amber/red/grey).
+  // The footer's network selector: its label is the BUILD's network as reported
+  // by main; the dot carries the live connection status (green/amber/red/grey).
   const netDot = nodeDotColor(useNodeStatus())
-  const netLabel = 'Mainnet'
+  const netLabel = networkLabel(useBuildNetwork())
   // Which asset the Send pane composes. null = native coin (the sidebar/hero Send,
   // and coin-control); a token when opened from the Tokens panel.
   const [sendToken, setSendToken] = useState<TokenBalance | null>(null)
