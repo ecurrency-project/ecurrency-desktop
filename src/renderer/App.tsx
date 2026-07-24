@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { VaultStatus } from '../shared/protocol'
 import { startActivityReporting } from './lib/activity'
 import { wallet } from './lib/wallet'
-import { nodeDotColor, useNodeStatus } from './lib/walletData'
+import { networkLabel, nodeDotColor, useBuildNetwork, useNodeStatus } from './lib/walletData'
 import { brand } from './brand'
 import { ChevLeftIcon, ChevRightIcon, TitleBar } from './ui'
 import { UpdateBanner } from './components/UpdateBanner'
@@ -94,8 +94,9 @@ export function App() {
 
   // Title-bar connection chip: the dot mirrors the shared node status (green connected,
   // amber syncing, red offline, grey while checking/unknown) so an offline node doesn't
-  // read as healthy here.
-  const netLabel = node.status === null || node.checking ? 'Mainnet' : node.status.reachable !== true ? 'Offline' : node.status.syncing ? 'Syncing' : 'Mainnet'
+  // read as healthy here. The label is the BUILD's network as reported by main.
+  const netName = networkLabel(useBuildNetwork())
+  const netLabel = node.status === null || node.checking ? netName : node.status.reachable !== true ? 'Offline' : node.status.syncing ? 'Syncing' : netName
   const center: ReactNode =
     route === 'wallet' ? (
       <span className="titlebar-net">
