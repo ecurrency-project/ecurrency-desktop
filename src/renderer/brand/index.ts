@@ -29,8 +29,12 @@ export interface BrandConfig {
    *  Consensus values live in the crypto package (UPGRADE); this is only
    *  the renderer-facing presentation. */
   upgrade: {
-    /** Ticker of the source chain being converted from, e.g. "BTC". */
-    sourceCoinLabel: string
+    /**
+     * Ticker of the source chain per NATIVE network the wallet runs on —
+     * e.g. "BTC" on mainnet but "tBTC" on testnet, so test coins are never
+     * mistaken for real ones.
+     */
+    sourceCoinLabel: Readonly<Record<'mainnet' | 'testnet', string>>
     /**
      * Explorer tx URL prefix of the SOURCE chain per NATIVE network the
      * wallet runs on (the source chain follows it: native testnet locks on

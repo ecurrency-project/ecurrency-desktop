@@ -35,7 +35,9 @@ const PAGE_META: Record<Nav, { title: string; subtitle: string }> = {
   wallet: { title: 'Wallet', subtitle: `Your ${brand.assetName} balance and recent activity` },
   send: { title: 'Send', subtitle: `Send ${brand.assetLabel} to any address` },
   receive: { title: 'Receive', subtitle: 'Share your address to get paid' },
-  convert: { title: 'Convert', subtitle: `Turn ${brand.upgrade?.sourceCoinLabel ?? 'BTC'} into ${brand.assetLabel}` },
+  // The convert subtitle is network-dependent (tBTC on testnet); this static
+  // entry is the pre-resolution fallback, overridden in the component.
+  convert: { title: 'Convert', subtitle: `Turn ${brand.upgrade?.sourceCoinLabel.mainnet ?? 'BTC'} into ${brand.assetLabel}` },
   activity: { title: 'Activity', subtitle: 'Every transaction on this wallet' },
   coins: { title: 'Coins', subtitle: 'Manage your unspent outputs (UTXOs)' },
   settings: { title: 'Settings', subtitle: 'Manage your wallet and security' },
@@ -176,7 +178,12 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
     </div>
   )
 
-  const meta = PAGE_META[nav]
+  // The Convert subtitle names the source coin for the ACTIVE network
+  // (e.g. tBTC on testnet); everything else is network-agnostic.
+  const meta =
+    nav === 'convert' && brand.upgrade !== null && buildNet !== null
+      ? { title: 'Convert', subtitle: `Turn ${brand.upgrade.sourceCoinLabel[buildNet]} into ${brand.assetLabel}` }
+      : PAGE_META[nav]
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
