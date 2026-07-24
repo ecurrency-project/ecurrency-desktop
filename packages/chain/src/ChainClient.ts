@@ -44,9 +44,11 @@ export class ChainClient {
       config.endpoints !== undefined && config.endpoints.length > 0
         ? config.endpoints
         : nodesFor(config.network);
-    if (endpoints.length === 0) {
-      throw new Error(`No endpoints configured for network '${config.network}'`);
-    }
+    // An empty list is a legitimate state, not a construction error: a brand
+    // may ship no public nodes (network not launched yet), and the user adds
+    // their own node in Settings AFTER the app has started. Requests made in
+    // the meantime fail with a ChainError; the status indicator shows
+    // "unreachable" instead of the whole wallet refusing to boot.
     this.clients = endpoints.map(
       (e) => new EsploraClient(e, config.transport),
     );
@@ -112,7 +114,10 @@ export class ChainClient {
   async broadcastTransaction(rawHex: string): Promise<BroadcastResult> {
     const primary = this.clients[0];
     if (primary === undefined) {
-      throw new Error('ChainClient has no endpoints configured');
+      throw new ChainError(
+        'broadcast_unavailable',
+        `No node endpoints configured for network '${this.network}' — add your own node in Settings.`,
+      );
     }
     const txid = await primary.broadcastTransaction(rawHex);
     return { txid, endpoint: primary.endpoint };
@@ -129,6 +134,12 @@ export class ChainClient {
   private async tryEachRead<T>(
     op: (c: EsploraClient) => Promise<T>,
   ): Promise<T> {
+    if (this.clients.length === 0) {
+      throw new ChainError(
+        'network',
+        `No node endpoints configured for network '${this.network}' — add your own node in Settings.`,
+      );
+    }
     let lastError: unknown;
     for (const client of this.clients) {
       try {
