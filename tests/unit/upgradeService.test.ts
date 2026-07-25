@@ -33,6 +33,7 @@ interface FakeChainState {
   txsByAddress?: Record<string, BtcHistoryTx[]>
   fees?: ReadonlyMap<number, number>
   failFees?: boolean
+  tip?: number
 }
 
 function harness(state: FakeChainState = {}) {
@@ -56,6 +57,7 @@ function harness(state: FakeChainState = {}) {
       broadcasts.push(hex)
       return 'ab'.repeat(32)
     },
+    tipHeight: async () => state.tip ?? 850_105,
   }
   const service = new UpgradeService(vault, store, chain, PARAMS)
   return { service, broadcasts, savedIndex: () => saved }
@@ -102,6 +104,7 @@ describe('status', () => {
       destScripthashHex: '29'.repeat(32),
       confirmed: true,
       blockHeight: 850_100,
+      confirmations: 6, // tip 850_105 − height 850_100 + 1
     })
   })
 

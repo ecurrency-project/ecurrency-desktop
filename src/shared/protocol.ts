@@ -101,6 +101,8 @@ export type VaultRequest =
 /** Capability probe: whether this build/wallet offers the upgrade flow. */
 export interface UpgradeInfo {
   readonly enabled: boolean
+  /** Smallest convertible amount in satoshi (consensus parameter), when enabled. */
+  readonly minConvertValueSat?: string
 }
 
 export type UpgradeConvertRequest =
@@ -114,6 +116,8 @@ export interface UpgradeEpisodeView {
   readonly destScripthashHex: string | null
   readonly confirmed: boolean
   readonly blockHeight?: number
+  /** BTC confirmations at status time (credits need 6 + a 2h timer). */
+  readonly confirmations?: number
 }
 
 export interface UpgradeStatusView {
