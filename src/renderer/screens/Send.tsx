@@ -309,6 +309,9 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                 placeholder={`${brand.addressPlaceholder} address or contact`}
                 aria-label="Recipient address"
               />
+              {/* Click-away layer: a dropdown must close when the user clicks
+                  anywhere else, not only on the toggle again. */}
+              {pickerOpen && <div role="presentation" onClick={() => setPickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />}
               {pickerOpen && (
                 <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 20, background: 'var(--card-el)', border: '1px solid var(--border-s)', borderRadius: 12, boxShadow: 'var(--shadow)', padding: 4 }}>
                   {contacts.map((c) => (
