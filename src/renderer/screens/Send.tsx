@@ -334,6 +334,11 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                       </span>
                     </button>
                   ))}
+                  {/* Separator as its own element: a conditional borderTop on the
+                      button below would mix a longhand with its `border: none`
+                      shorthand, and React warns that such pairs resolve
+                      unpredictably — here it surfaced as a stray dark edge. */}
+                  {contacts.length > 0 && <div style={{ height: 1, margin: '2px 0', background: 'var(--border)' }} />}
                   <button
                     type="button"
                     className="picker-row"
@@ -341,7 +346,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                       setPickerOpen(false)
                       setContactOpen(true)
                     }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: '9px 11px', border: 'none', background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left', borderTop: contacts.length > 0 ? '1px solid var(--border)' : undefined, marginTop: contacts.length > 0 ? 2 : 0 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: '9px 11px', border: 'none', background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left' }}
                   >
                     <span style={{ width: 30, height: 30, flex: 'none', borderRadius: '50%', border: '1px dashed var(--border-s)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
                       <PlusIcon size={16} />

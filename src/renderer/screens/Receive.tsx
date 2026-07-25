@@ -111,8 +111,10 @@ export function Receive() {
               Post-quantum address
             </Pill>
           </div>
-          {/* QR tile — always on white, so the loading spinner is drawn dark. */}
-          <div style={{ width: 212, height: 212, borderRadius: 14, background: '#fff', padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 0 var(--border-s)' }}>
+          {/* QR tile — always on white (scanners want the quiet zone light), so
+              on a light theme it needs a border on ALL sides to read as a tile;
+              a bottom-only shadow looked like a stray line. */}
+          <div style={{ width: 212, height: 212, borderRadius: 14, background: '#fff', padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-s)' }}>
             {address !== null ? (
               <QRCodeSVG value={address} size={184} bgColor="#ffffff" fgColor="#131311" level="M" />
             ) : (

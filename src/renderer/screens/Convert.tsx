@@ -221,7 +221,8 @@ export function Convert() {
           </div>
           {status !== null && (
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginTop: 14 }}>
-              <div style={{ flex: 'none', background: '#fff', padding: 8, borderRadius: 10 }}>
+              {/* Same tile treatment as Receive: white field, border all round. */}
+              <div style={{ flex: 'none', background: '#fff', padding: 8, borderRadius: 10, border: '1px solid var(--border-s)' }}>
                 <QRCodeSVG value={status.stagingAddress} size={96} />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
