@@ -159,6 +159,14 @@ export class ChainService {
     if (tx.status.blockHeight !== undefined) detail.blockHeight = tx.status.blockHeight
     if (tx.status.blockPos !== undefined) detail.blockPos = tx.status.blockPos
     if (tx.isCoinbase !== undefined) detail.isCoinbase = tx.isCoinbase
+    if (tx.coinbaseInfo !== undefined) {
+      detail.coinbaseInfo = {
+        btcTxid: tx.coinbaseInfo.btcTxid,
+        btcBlockHeight: tx.coinbaseInfo.btcBlockHeight,
+        btcOutNum: tx.coinbaseInfo.btcOutNum,
+        valueSat: tx.coinbaseInfo.valueSat.toString(),
+      }
+    }
     return detail
   }
 
@@ -409,6 +417,7 @@ type MutableTxDetail = {
   blockHeight?: number
   blockPos?: number
   isCoinbase?: boolean
+  coinbaseInfo?: { btcTxid: string; btcBlockHeight: number; btcOutNum: number; valueSat: string }
 }
 
 // Signature scheme of a siglist entry, read from its algo byte. Hex layout is
