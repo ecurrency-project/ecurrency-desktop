@@ -175,6 +175,14 @@ export function Convert() {
     }
   })()
 
+  // One hint line UNDER the amount row, so its appearance never moves the row
+  // itself: the minimum in manual mode, the fee note in All mode.
+  const amountHint = ((): string | null => {
+    if (belowMin) return `Below the minimum of ${fromSat(minSat ?? '0')} ${src}.`
+    if (convertAll) return hasFunds ? 'The network fee is subtracted from this amount at review.' : null
+    return minSat !== null ? `Minimum ${fromSat(minSat)} ${src}` : null
+  })()
+
   // Light client-side shape check for the Return address (main re-validates
   // strictly on submit): legacy base58 or bech32 with the right network prefix.
   const returnAddrLooksValid = useMemo(() => {
@@ -243,38 +251,35 @@ export function Convert() {
 
           {stage === 'form' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                <div style={{ flex: 1 }}>
-                  <TextField
-                    label={`Amount (${src})`}
-                    mono
-                    // "All" shows the balance it will spend (the network fee is
-                    // subtracted at review, where the exact number is known).
-                    value={convertAll ? (hasFunds ? fromSat(confirmedSat) : '') : amount}
-                    disabled={convertAll}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder={convertAll ? 'Entire balance (minus network fee)' : '0.0'}
-                    aria-label={`Amount in ${src}`}
-                    state={belowMin ? 'error' : 'default'}
-                    hint={
-                      belowMin
-                        ? `Below the minimum of ${fromSat(minSat ?? '0')} ${src}.`
-                        : !convertAll && minSat !== null
-                          ? `Minimum ${fromSat(minSat)} ${src}`
-                          : undefined
-                    }
-                  />
+              {/* The hint lives BELOW the row, not inside the field: a hint
+                  inside would grow the field's column and shift the All button
+                  (which aligns to the column's bottom) as the text appears and
+                  disappears. */}
+              <div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <TextField
+                      label={`Amount (${src})`}
+                      mono
+                      // "All" shows the balance it will spend (the network fee is
+                      // subtracted at review, where the exact number is known).
+                      value={convertAll ? (hasFunds ? fromSat(confirmedSat) : '') : amount}
+                      disabled={convertAll}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder={convertAll ? 'Entire balance (minus network fee)' : '0.0'}
+                      aria-label={`Amount in ${src}`}
+                      state={belowMin ? 'error' : 'default'}
+                    />
+                  </div>
+                  {/* Same height as .field (46px) so the row lines up. */}
+                  <Button variant={convertAll ? 'primary' : 'secondary'} style={{ height: 46 }} onClick={() => setConvertAll((v) => !v)}>
+                    {convertAll ? 'All ✓' : 'All'}
+                  </Button>
                 </div>
-                {/* Same height as .field (46px) so the row lines up. */}
-                <Button variant={convertAll ? 'primary' : 'secondary'} style={{ height: 46 }} onClick={() => setConvertAll((v) => !v)}>
-                  {convertAll ? 'All ✓' : 'All'}
-                </Button>
+                {amountHint !== null && (
+                  <div className={belowMin ? 'field-hint field-hint--error' : 'field-hint'}>{amountHint}</div>
+                )}
               </div>
-              {convertAll && hasFunds && (
-                <div style={{ fontSize: 11.5, color: 'var(--ink-500)', marginTop: -6 }}>
-                  The network fee is subtracted from this amount at review.
-                </div>
-              )}
               <TextField
                 label={`Receive to (${brand.assetName} address)`}
                 mono
