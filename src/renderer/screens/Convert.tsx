@@ -38,8 +38,9 @@ export function Convert() {
   const src = up?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'
   const [status, setStatus] = useState<UpgradeStatusView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  // null = unknown / not reported (old node, unreachable); false = still syncing.
-  const [btcSynced, setBtcSynced] = useState<boolean | null>(null)
+  // BTC-side sync state of the node: synced flag + headers/scanned heights.
+  // null = unknown / not reported (old node, unreachable).
+  const [btcSync, setBtcSync] = useState<{ synced?: boolean; headers?: number; scanned?: number } | null>(null)
   const [copied, setCopied] = useState(false)
 
   // Compose state.
@@ -65,12 +66,23 @@ export function Convert() {
         setLoadError(null)
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)))
-    // The node ignores upgrade transactions until its BTC chain is synced —
-    // surface that so a deposit/convert isn't mistaken for a lost credit.
+    // The node ignores upgrade transactions until its BTC chain is synced,
+    // and credits require the payment's block to be fully SCANNED (which can
+    // trail the headers) — surface both so a wait isn't mistaken for a loss.
     wallet
       .nodeStatus()
-      .then((n) => setBtcSynced(n.reachable ? (n.btcSynced ?? null) : null))
-      .catch(() => setBtcSynced(null))
+      .then((n) =>
+        setBtcSync(
+          n.reachable
+            ? {
+                ...(n.btcSynced !== undefined ? { synced: n.btcSynced } : {}),
+                ...(n.btcHeaders !== undefined ? { headers: n.btcHeaders } : {}),
+                ...(n.btcScanned !== undefined ? { scanned: n.btcScanned } : {}),
+              }
+            : null,
+        ),
+      )
+      .catch(() => setBtcSync(null))
   }, [])
 
   // Load status + prefill the destination with the wallet's own receive
@@ -151,15 +163,16 @@ export function Convert() {
       <div style={{ maxWidth: 520, width: '100%', margin: '32px auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loadError !== null && <div className="field-hint field-hint--error">{loadError}</div>}
 
-        {btcSynced === false && (
+        {(btcSync?.synced === false || (btcSync?.headers !== undefined && btcSync.scanned !== undefined && btcSync.headers - btcSync.scanned > 2)) && (
           <div
             role="status"
             style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--card)', border: '1px solid var(--warning)', borderRadius: 12, padding: '12px 14px', fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.5 }}
           >
             <AlertIcon size={16} />
             <span>
-              The {brand.assetLabel} node is still syncing the {src} chain. You can deposit and convert now, but the
-              network will only credit conversions after that sync completes — expect a delay.
+              {btcSync?.synced === false
+                ? `The ${brand.assetLabel} node is still syncing the ${src} chain. You can deposit and convert now, but the network will only credit conversions after that sync completes — expect a delay.`
+                : `The ${brand.assetLabel} node is still scanning ${src} blocks (${String((btcSync?.headers ?? 0) - (btcSync?.scanned ?? 0))} behind). Conversions are credited once the payment's block has been scanned.`}
             </span>
           </div>
         )}

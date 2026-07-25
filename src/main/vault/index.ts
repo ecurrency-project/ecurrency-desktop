@@ -657,6 +657,8 @@ export function createWalletCore(): WalletCore {
         syncing: s.initialBlockDownload,
         latencyMs: Date.now() - t0,
         ...(s.btcSynced !== undefined ? { btcSynced: s.btcSynced } : {}),
+        ...(s.btcHeaders !== undefined ? { btcHeaders: s.btcHeaders } : {}),
+        ...(s.btcScanned !== undefined ? { btcScanned: s.btcScanned } : {}),
       }
     } catch {
       return { url, reachable: false }

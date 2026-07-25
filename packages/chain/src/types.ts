@@ -212,6 +212,10 @@ export interface NodeStatus {
    * report it (no upgrade support).
    */
   readonly btcSynced?: boolean;
+  /** Height of the last known BTC header (upgrade-capable nodes only). */
+  readonly btcHeaders?: number;
+  /** Height of the last fully SCANNED BTC block — credits require the scan. */
+  readonly btcScanned?: number;
 }
 
 // ─── Broadcast result ────────────────────────────────────────────────

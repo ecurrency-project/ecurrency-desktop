@@ -390,6 +390,10 @@ export interface NodeStatus {
   readonly latencyMs?: number
   /** Upgrade-capable nodes only: whether the node's BTC chain is synced. */
   readonly btcSynced?: boolean
+  /** Last known BTC header height (upgrade-capable nodes only). */
+  readonly btcHeaders?: number
+  /** Last fully scanned BTC block — credits require the scan, not just headers. */
+  readonly btcScanned?: number
 }
 
 // How the user supplies a watch wallet to add: a descriptor token, a bare account
