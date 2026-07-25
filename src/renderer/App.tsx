@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { VaultStatus } from '../shared/protocol'
 import { startActivityReporting } from './lib/activity'
+import { setTheme, useTheme } from './lib/prefs'
 import { wallet } from './lib/wallet'
 import { networkLabel, nodeDotColor, useBuildNetwork, useNodeStatus } from './lib/walletData'
 import { brand } from './brand'
@@ -26,7 +27,9 @@ function routeForStatus(status: VaultStatus): Route {
 
 export function App() {
   const [route, setRoute] = useState<Route>('boot')
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  // Persisted preference (see lib/prefs), not component state: a restart must
+  // not silently drop the user's choice back to dark.
+  const theme = useTheme()
   const [collapsed, setCollapsed] = useState(false)
   const node = useNodeStatus()
 
@@ -111,7 +114,7 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <TitleBar left={left} theme={theme} onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))} center={center} />
+      <TitleBar left={left} theme={theme} onToggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} center={center} />
       <UpdateBanner />
       <div style={{ flex: 1, minHeight: 0 }}>{screen}</div>
     </div>

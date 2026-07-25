@@ -42,3 +42,41 @@ export function useAdvancedMode(): boolean {
   }, [])
   return useSyncExternalStore(sub, () => advanced, () => advanced)
 }
+
+// ── Theme ────────────────────────────────────────────────────────────
+// Dark by default (the app's own look), light when the user picks it.
+// Persisted like advanced mode so a restart doesn't undo the choice.
+
+export type Theme = 'dark' | 'light'
+
+const THEME_KEY = 'wallet.theme'
+
+function readTheme(): Theme {
+  try {
+    return window.localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'
+  } catch {
+    return 'dark'
+  }
+}
+
+let theme = readTheme()
+const themeListeners = new Set<Listener>()
+
+export function setTheme(value: Theme): void {
+  if (value === theme) return
+  theme = value
+  try {
+    window.localStorage.setItem(THEME_KEY, value)
+  } catch {
+    // Non-fatal: the preference just won't persist across restarts.
+  }
+  for (const l of [...themeListeners]) l()
+}
+
+export function useTheme(): Theme {
+  const sub = useCallback((l: Listener) => {
+    themeListeners.add(l)
+    return () => themeListeners.delete(l)
+  }, [])
+  return useSyncExternalStore(sub, () => theme, () => theme)
+}
