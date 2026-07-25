@@ -64,6 +64,9 @@
   --watch: #6e6a60;
   --watch-soft: #eeebe3;
   --ring: #2f6bd8;
+  /* Elevation has to be re-tuned per theme: the dark theme's near-black
+     shadow reads as a hard black band on light surfaces (menus, modals). */
+  --shadow: 0 18px 40px -18px rgba(20, 19, 17, 0.28), 0 5px 14px -8px rgba(20, 19, 17, 0.16);
 }
 
 * {

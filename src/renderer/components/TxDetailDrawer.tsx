@@ -303,7 +303,11 @@ function IoList({
           type="button"
           onClick={() => setExpanded((o) => !o)}
           aria-expanded={expanded}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}
+          // Border longhands only: a lone borderTop on a <button> leaves the
+          // UA's default outset border on the other three sides (a dark frame),
+          // and pairing it with the `border` shorthand is the mix React warns
+          // about. Setting width/style/colour explicitly avoids both.
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '10px 14px', borderWidth: '1px 0 0', borderStyle: 'solid', borderColor: 'var(--border)', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}
         >
           {expanded ? 'Show less' : `Show all ${String(entries.length)}`}
           <span style={{ display: 'flex', transform: expanded ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s ease' }}>
@@ -466,8 +470,11 @@ function RawHexSection({ txid }: { txid: string }) {
           <ChevDownIcon size={16} />
         </span>
       </button>
+      {/* The pane needs a surface of its own: without a background the drawer's
+          colour showed through around the footer button inside the rounded,
+          clipped box. */}
       {open && (
-        <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--card)' }}>
           {error !== null ? (
             <div className="field-hint field-hint--error" style={{ padding: '12px 14px' }}>{error}</div>
           ) : hex === null ? (
@@ -480,7 +487,8 @@ function RawHexSection({ txid }: { txid: string }) {
               <button
                 type="button"
                 onClick={copy}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '9px 14px', borderTop: '1px solid var(--border)', background: 'var(--well)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}
+                // Top separator only — see the note on the "Show all" button.
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '9px 14px', borderWidth: '1px 0 0', borderStyle: 'solid', borderColor: 'var(--border)', background: 'var(--well)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}
               >
                 <CopyIcon size={14} />
                 {copied ? 'Copied' : 'Copy hex'}
