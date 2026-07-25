@@ -86,7 +86,13 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
           </button>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 18px 26px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {/* The scroll container must NOT be the flex column itself: as a flex
+            parent with a bounded height it shrinks its children instead of
+            overflowing, and cards with overflow:hidden then clip their own
+            rows (advanced mode / the provenance card made this visible). The
+            inner wrapper lays the sections out and the outer one scrolls. */}
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <div style={{ padding: '20px 18px 26px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* Headline */}
           <div>
             <div style={{ fontSize: 13, color: 'var(--ink-500)', fontWeight: 500 }}>{incoming ? 'Received' : 'Sent'}</div>
@@ -226,6 +232,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
                 Explorer
               </button>
             )}
+          </div>
           </div>
         </div>
       </div>
