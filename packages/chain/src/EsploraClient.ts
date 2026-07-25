@@ -331,7 +331,7 @@ export class EsploraClient {
   /** `GET /api/status` → node sync state (chain, height, syncing). The node
    *  exposes this on both the public and a self-hosted endpoint. */
   async getNodeStatus(): Promise<NodeStatus> {
-    const raw = await request<{ chain?: unknown; blocks?: unknown; initialblockdownload?: unknown; btc_synced?: unknown }>(
+    const raw = await request<{ chain?: unknown; blocks?: unknown; initialblockdownload?: unknown; btc_synced?: unknown; btc_headers?: unknown; btc_scanned?: unknown }>(
       { url: `${this.endpoint.url}/api/status`, expect: 'json' },
       this.transportOpts,
     );
@@ -341,6 +341,10 @@ export class EsploraClient {
       initialBlockDownload: raw.initialblockdownload === true,
       // Only upgrade-capable nodes report it; absent = not applicable.
       ...(typeof raw.btc_synced === 'boolean' ? { btcSynced: raw.btc_synced } : {}),
+      // Scan progress: credits require the FULL block to be scanned, which can
+      // trail the headers by a lot — surface both so the UI can show the lag.
+      ...(typeof raw.btc_headers === 'number' && Number.isFinite(raw.btc_headers) ? { btcHeaders: raw.btc_headers } : {}),
+      ...(typeof raw.btc_scanned === 'number' && Number.isFinite(raw.btc_scanned) ? { btcScanned: raw.btc_scanned } : {}),
     };
   }
 
