@@ -4,7 +4,7 @@ import { brand } from '../brand'
 import { AddWalletDialog } from '../components/AddWalletDialog'
 import { setAdvancedMode, useAdvancedMode } from '../lib/prefs'
 import { wallet } from '../lib/wallet'
-import { nodeDotColor, nodeSyncPercent, pollNode, probeNode, resetWalletData, setWallets, useActiveWallet, useNodeStatus, useWallets, type NodeStatusSnapshot } from '../lib/walletData'
+import { nodeDotColor, nodeSyncPercent, pollNode, probeNode, resetWalletData, setContacts as cacheSetContacts, setWallets, useActiveWallet, useContacts, useNodeStatus, useWallets, type NodeStatusSnapshot } from '../lib/walletData'
 import { BoltIcon, Button, ContactDialog, EyeIcon, GlobeIcon, KeyIcon, Modal, OnionIcon, PasswordField, PasswordStrength, PencilIcon, Pill, PlusIcon, RetryIcon, Screen, Segmented, ServerIcon, ShieldIcon, Switch, TextArea, TextField, TrashIcon, WalletIcon } from '../ui'
 
 // Settings: network status, security (reveal recovery phrase behind a password
@@ -830,19 +830,13 @@ function RemoveWalletModal({ target, onClose }: { target: WalletInfo | null; onC
 type Dialog = { mode: 'add' } | { mode: 'edit'; contact: Contact }
 
 function ContactsCard() {
-  const [contacts, setContacts] = useState<readonly Contact[] | null>(null)
+  // The address book is shared state: Send reads it through the same cache.
+  // Editing here must publish the new list, or Send keeps offering a contact
+  // that no longer exists until the window is reloaded.
+  const { data: contacts, error: loadError } = useContacts()
+  const setContacts = cacheSetContacts
   const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
-
-  useEffect(() => {
-    void wallet
-      .listContacts()
-      .then(setContacts)
-      .catch((e: unknown) => {
-        setContacts([])
-        setError(e instanceof Error ? e.message : 'Could not load contacts.')
-      })
-  }, [])
 
   const list = contacts ?? []
   const editing = dialog?.mode === 'edit' ? dialog.contact : null
@@ -879,9 +873,9 @@ function ContactsCard() {
           </div>
         ))
       )}
-      {error !== null && (
+      {(error ?? loadError?.message) !== undefined && (
         <div className="field-hint field-hint--error" style={{ padding: '0 18px 12px' }}>
-          {error}
+          {error ?? loadError?.message}
         </div>
       )}
 
