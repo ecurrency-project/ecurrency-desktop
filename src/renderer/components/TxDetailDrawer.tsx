@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { AddressAlgo, HistoryItem, TxDetail, TxIoEntry } from '../../shared/protocol'
 import { brand } from '../brand'
 import { formatNative, formatToken, historyAmount, shortHash, tokenLabels } from '../lib/format'
@@ -178,7 +178,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
               <SummaryRow label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${brand.assetLabel}`} />
               <SummaryRow label="Fee" value={`${formatNative(detail.feeAtomic)} ${brand.assetLabel}`} />
               <SummaryRow label="Size" value={`${String(detail.sizeBytes)} bytes`} />
-              <SummaryRow label="Txid" value={shortHash(tx.txid)} mono />
+              <SummaryRow label="Txid" value={shortHash(tx.txid)} copy={tx.txid} mono />
             </div>
           )}
 
@@ -189,6 +189,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
               <SummaryRow
                 label="Converted from"
                 value={`${brand.upgrade?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'} tx ${shortHash(detail.coinbaseInfo.btcTxid)}`}
+                copy={detail.coinbaseInfo.btcTxid}
                 mono
                 first
               />
@@ -212,7 +213,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
                 {detail.isCoinbase === true && <SummaryRow label="Coinbase" value="Yes" />}
                 {detail.blockHeight !== undefined && <SummaryRow label="Block height" value={String(detail.blockHeight)} />}
                 {detail.blockPos !== undefined && <SummaryRow label="Block position" value={String(detail.blockPos)} />}
-                {detail.blockHash !== undefined && <SummaryRow label="Block hash" value={shortHash(detail.blockHash)} mono />}
+                {detail.blockHash !== undefined && <SummaryRow label="Block hash" value={shortHash(detail.blockHash)} copy={detail.blockHash} mono />}
               </div>
             </div>
           )}
@@ -282,7 +283,14 @@ function IoList({
         <div key={`${e.address ?? 'na'}:${String(i)}`} style={{ borderTop: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: advanced ? '9px 14px 5px' : '9px 14px' }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)', flex: 'none' }}>{ioText(e)}</span>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.address ?? '—'}</span>
+            {e.address !== undefined ? (
+              <CopyValue
+                text={e.address}
+                style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              />
+            ) : (
+              <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)' }}>—</span>
+            )}
             {e.own && <Badge text="YOU" color="var(--primary)" bg="var(--red-soft)" />}
             {e.pq && <Badge text="PQ" color="var(--pq)" bg="var(--pq-soft)" />}
             {kind === 'out' && <OutTag own={e.own} incoming={incoming} />}
@@ -329,12 +337,45 @@ function Badge({ text, color, bg }: { text: string; color: string; bg: string })
   return <span style={{ flex: 'none', fontSize: 11, fontWeight: 700, color, background: bg, padding: '2px 6px', borderRadius: 999 }}>{text}</span>
 }
 
-function SummaryRow({ label, value, mono = false, first = false }: { label: string; value: string; mono?: boolean; first?: boolean }) {
+function SummaryRow({ label, value, mono = false, first = false, copy }: { label: string; value: string; mono?: boolean; first?: boolean; copy?: string }) {
+  const style: CSSProperties = { fontSize: mono ? 11.5 : 12.5, fontWeight: 600, fontFamily: 'var(--mono)', color: mono ? 'var(--ink-700)' : 'var(--ink-900)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '11px 14px', borderTop: first ? undefined : '1px solid var(--border)' }}>
       <span style={{ fontSize: 12.5, color: 'var(--ink-500)', flex: 'none' }}>{label}</span>
-      <span style={{ fontSize: mono ? 11.5 : 12.5, fontWeight: 600, fontFamily: 'var(--mono)', color: mono ? 'var(--ink-700)' : 'var(--ink-900)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+      {copy !== undefined ? <CopyValue text={copy} display={value} style={style} /> : <span style={style}>{value}</span>}
     </div>
+  )
+}
+
+// A truncated identifier the user can actually take with them: the shortened
+// form is what the layout can fit, the full value lives in the tooltip and
+// goes to the clipboard on click. Identifiers are dead ends otherwise —
+// shortHash() puts the ellipsized string in the DOM, so selecting the text
+// would only ever copy "961b9c67…c5f1b5".
+function CopyValue({ text, display, style }: { text: string; display?: string; style?: CSSProperties }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={copied ? 'Copied' : `${text}\n(click to copy)`}
+      onClick={() => {
+        void navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          void navigator.clipboard.writeText(text)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        }
+      }}
+      style={{ ...style, cursor: 'pointer', color: copied ? 'var(--success)' : style?.color }}
+    >
+      {copied ? 'Copied' : (display ?? text)}
+    </span>
   )
 }
 
@@ -342,18 +383,23 @@ function SummaryRow({ label, value, mono = false, first = false }: { label: stri
 // outpoint an input spends, its signature scheme, the scripthash, and the redeem
 // script (ASM with a hex toggle). Outputs show just their scripthash.
 function IoAdvanced({ e, kind }: { e: TxIoEntry; kind: 'in' | 'out' }) {
-  const rows: { k: string; v: string }[] = []
-  if (kind === 'in' && e.prevoutTxid !== undefined) rows.push({ k: 'outpoint', v: `${shortHash(e.prevoutTxid)}:${String(e.prevoutVout ?? 0)}` })
+  // `full` = the untruncated value to put on the clipboard, when the row
+  // shows an identifier rather than a label.
+  const rows: { k: string; v: string; full?: string }[] = []
+  if (kind === 'in' && e.prevoutTxid !== undefined) {
+    rows.push({ k: 'outpoint', v: `${shortHash(e.prevoutTxid)}:${String(e.prevoutVout ?? 0)}`, full: `${e.prevoutTxid}:${String(e.prevoutVout ?? 0)}` })
+  }
   if (kind === 'in' && e.sigScheme !== undefined) rows.push({ k: 'signature', v: schemeLabel(e.sigScheme) })
-  if (e.scripthash !== undefined) rows.push({ k: 'scripthash', v: shortHash(e.scripthash) })
+  if (e.scripthash !== undefined) rows.push({ k: 'scripthash', v: shortHash(e.scripthash), full: e.scripthash })
   const script = kind === 'in' ? e.redeemScript : undefined
   if (rows.length === 0 && script === undefined) return null
+  const valueStyle: CSSProperties = { color: 'var(--ink-500)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
   return (
     <div style={{ padding: '0 14px 9px', display: 'flex', flexDirection: 'column', gap: 3 }}>
       {rows.map((r) => (
         <div key={r.k} style={{ display: 'flex', gap: 8, fontSize: 10.5, fontFamily: 'var(--mono)', lineHeight: 1.5 }}>
           <span style={{ color: 'var(--ink-300)', flex: 'none', width: 74 }}>{r.k}</span>
-          <span style={{ color: 'var(--ink-500)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.v}</span>
+          {r.full !== undefined ? <CopyValue text={r.full} display={r.v} style={valueStyle} /> : <span style={valueStyle}>{r.v}</span>}
         </div>
       ))}
       {script !== undefined && <ScriptBlock hex={script} />}
