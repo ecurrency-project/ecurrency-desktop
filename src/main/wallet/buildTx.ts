@@ -366,14 +366,19 @@ export function estimateSendFee(params: {
     return feeForFixedInputs(manualInputs, amountAtomic, rate)
   }
 
-  // Automatic selection: iterate to a stable (selection, fee) pair.
+  // Automatic selection: iterate to a stable (selection, fee) pair. The fee of
+  // an intermediate selection must NOT be treated as a shortfall — the first
+  // pass selects against the bare amount (fee still 0), so a selection that
+  // lands exactly on the amount is expected; the loop prices it and re-selects
+  // against amount + that fee, pulling in another coin. Only the pool as a
+  // whole failing to cover amount + fee is insufficient funds.
   let fee = 0n
   for (let i = 0; i < FEE_ITERATIONS; i += 1) {
     const selected = selectCoins(utxos, amountAtomic + fee)
     if (selected === null) {
       throw new InsufficientFundsError(amountAtomic + fee, utxos.reduce((sum, u) => sum + u.value, 0n))
     }
-    const nextFee = feeForFixedInputs(selected, amountAtomic, rate)
+    const nextFee = feeShapeForInputs(selected, amountAtomic, rate)
     if (nextFee === fee) return fee
     fee = nextFee
   }
@@ -383,16 +388,27 @@ export function estimateSendFee(params: {
 // Fee for a KNOWN input set, choosing the change/changeless shape. A leftover
 // above the dust threshold gets its own output (2-output fee); otherwise the
 // send is changeless (1-output fee) and buildSend folds the tiny remainder into
-// the fee. Throws when the inputs can't even cover a changeless send.
+// the fee. Throws when the inputs can't even cover a changeless send — for a
+// FIXED set (manual coin control) that is a real shortfall.
 function feeForFixedInputs(inputs: readonly SpendableUtxo[], amountAtomic: bigint, rate: number): bigint {
   const sum = inputs.reduce((total, u) => total + u.value, 0n)
   const feeChangeless = feeForInputs(inputs, rate, 1)
   if (sum < amountAtomic + feeChangeless) {
     throw new InsufficientFundsError(amountAtomic + feeChangeless, sum)
   }
+  return feeShapeForInputs(inputs, amountAtomic, rate)
+}
+
+// The same change/changeless pricing without the sufficiency verdict: used by
+// the automatic fixpoint, where a selection too small to pay its own fee is a
+// step in the iteration, not an error.
+function feeShapeForInputs(inputs: readonly SpendableUtxo[], amountAtomic: bigint, rate: number): bigint {
+  const sum = inputs.reduce((total, u) => total + u.value, 0n)
   const feeWithChange = feeForInputs(inputs, rate, 2)
+  // A negative "change" means this selection cannot fund the send at all; price
+  // it changeless so the caller grows the selection on the next pass.
   const change = sum - amountAtomic - feeWithChange
-  return change > DUST_ATOMIC ? feeWithChange : feeChangeless
+  return change > DUST_ATOMIC ? feeWithChange : feeForInputs(inputs, rate, 1)
 }
 
 export interface BuildTokenSendParams {

@@ -142,12 +142,18 @@ describe('estimateSendFee', () => {
     // one input, so the fee must reflect the multi-input tx — the old suggestFee
     // priced a single 500-input and under-charged.
     const pool = [utxo('a', 0, 500n), utxo('b', 0, 3n), utxo('c', 0, 2n)]
-    // Fee for a single input would be ~3; for the set actually required it's higher.
-    const oneInputFee = feeForInputs([utxo('a', 0, 500n)], RATE, 2)
-    expect(() => estimateSendFee({ utxos: pool, amountAtomic: 500n, feeRatePerVByte: RATE })).toThrow(InsufficientFundsError)
-    // …and the reason is that amount + real fee (needs all 3 inputs) exceeds the
-    // 505 total — i.e. it is NOT under-charging to a coverable single-input fee.
-    expect(500n + oneInputFee).toBeLessThanOrEqual(505n)
+    const fee = estimateSendFee({ utxos: pool, amountAtomic: 500n, feeRatePerVByte: RATE })
+    // The whole pool is needed, and it goes out changeless: 500 + fee == 505.
+    expect(fee).toBe(feeForInputs(pool, RATE, 1))
+    expect(500n + fee).toBe(505n)
+    // …which is strictly more than pricing a lone 500-input would have charged.
+    expect(fee).toBeGreaterThan(feeForInputs([utxo('a', 0, 500n)], RATE, 2))
+    // NOTE: this case used to assert an InsufficientFundsError — that was the
+    // estimator refusing a send the pool covers exactly, i.e. the very bug the
+    // "selection grows to cover its own fee" case below pins down.
+    const built = buildSend({ utxos: pool, recipient: RECIPIENT, amountAtomic: 500n, feeAtomic: fee, changeAddress: CHANGE })
+    expect(built.unsigned.inputs).toHaveLength(3)
+    expect(built.changeAtomic).toBe(0n)
   })
 
   it('agrees between automatic and manual selection for the same coins', () => {
@@ -249,5 +255,142 @@ describe('buildTokenSend', () => {
 
   it('throws when there is nothing native to pay the fee', () => {
     expect(() => buildTokenSend({ ...base, nativeUtxos: [] })).toThrow(InsufficientFundsError)
+  })
+})
+
+describe('estimateSendFee — selection grows to cover its own fee', () => {
+  const RATE = 0.009765625
+
+  it('funds an amount that a first-pass selection matches exactly (live pool)', () => {
+    // The reported case: sending 1.69 out of 1.69899274. Largest-first against
+    // the bare amount lands on 1.59 + 0.1 = exactly 1.69, which cannot also pay
+    // the fee — but the pool holds another 0.00899274. The estimator used to
+    // report insufficient funds here while "Max" (which spends everything)
+    // worked, so the wallet refused a send it could clearly afford.
+    const pool = [
+      utxo('a', 0, 159_000_000n),
+      utxo('b', 0, 10_000_000n),
+      utxo('c', 0, 732_932n),
+      utxo('d', 0, 131_974n),
+      utxo('e', 0, 33_964n),
+      utxo('f', 0, 404n),
+    ]
+    const amount = 169_000_000n
+    const fee = estimateSendFee({ utxos: pool, amountAtomic: amount, feeRatePerVByte: RATE })
+    expect(fee).toBeGreaterThan(0n)
+
+    // …and the build that follows must succeed with the same fee.
+    const built = buildSend({ utxos: pool, recipient: RECIPIENT, amountAtomic: amount, feeAtomic: fee, changeAddress: CHANGE })
+    expect(built.amountAtomic).toBe(amount)
+    expect(built.unsigned.inputs.length).toBeGreaterThanOrEqual(3) // 1.59 + 0.1 alone cannot pay the fee
+
+    // Which coins the selector picks is its own business — branch-and-bound
+    // happily takes 1.59 + 0.1 + 0.00000404 and folds the 399-atomic remainder
+    // into the fee for a changeless send — so balance against the inputs it
+    // actually chose, not against a guess at their order.
+    const spent = built.unsigned.inputs.reduce((sum, i) => {
+      const coin = pool.find((u) => u.txid === i.prevTxid && u.vout === i.vout)
+      expect(coin).toBeDefined()
+      return sum + (coin?.value ?? 0n)
+    }, 0n)
+    expect(spent).toBe(built.amountAtomic + built.feeAtomic + built.changeAtomic)
+  })
+
+  it('still reports insufficient funds when the pool truly cannot pay', () => {
+    const pool = [utxo('a', 0, 1_000n), utxo('b', 0, 500n)]
+    expect(() => estimateSendFee({ utxos: pool, amountAtomic: 1_500n, feeRatePerVByte: RATE })).toThrow(InsufficientFundsError)
+  })
+
+  it('a fixed manual set that cannot pay its fee is still a shortfall', () => {
+    const coins = [utxo('a', 0, 169_000_000n)]
+    expect(() =>
+      estimateSendFee({ utxos: [], manualInputs: coins, amountAtomic: 169_000_000n, feeRatePerVByte: RATE }),
+    ).toThrow(InsufficientFundsError)
+  })
+})
+
+// ─── Invariants over generated pools ─────────────────────────────────
+//
+// The example-based tests above encode what the implementation does at
+// specific points; they all passed while the wallet was refusing sends it
+// could afford. These check what the PRODUCT must be true of, over a few
+// hundred generated coin pools:
+//
+//   1. anything up to the send-max amount must build (the exact symptom that
+//      was reported: "Max works, a smaller amount does not");
+//   2. every successful build must balance: inputs = amount + fee + change.
+//
+// The generator is a seeded LCG, so a failure is reproducible from its seed
+// and the suite stays deterministic (no new dependency).
+describe('coin selection — invariants over generated pools', () => {
+  const RATE = 0.009765625
+  const ALGOS = ['ecdsa', 'schnorr', 'falcon512'] as const
+
+  function lcg(seed: number): () => number {
+    let s = seed >>> 0
+    return () => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0
+      return s / 0x100000000
+    }
+  }
+
+  // Pools mix magnitudes on purpose: the reported bug needed a couple of large
+  // coins that sum exactly to the amount plus a tail of small ones.
+  function makePool(rnd: () => number): SpendableUtxo[] {
+    const count = 1 + Math.floor(rnd() * 8)
+    const coins: SpendableUtxo[] = []
+    for (let i = 0; i < count; i += 1) {
+      const magnitude = [1n, 100n, 10_000n, 1_000_000n, 100_000_000n][Math.floor(rnd() * 5)] ?? 1n
+      const value = BigInt(1 + Math.floor(rnd() * 999)) * magnitude
+      // Mostly classical, occasionally PQ (a far larger, far more expensive input).
+      const algo = ALGOS[rnd() < 0.85 ? 0 : 1 + Math.floor(rnd() * 2)] ?? 'ecdsa'
+      coins.push({ txid: `t${String(i)}`, vout: i, value, chain: 0, index: i, algo })
+    }
+    return coins
+  }
+
+  it('any amount up to the send-max amount is spendable', () => {
+    const rnd = lcg(20260725)
+    for (let case_ = 0; case_ < 300; case_ += 1) {
+      const pool = makePool(rnd)
+      const total = pool.reduce((s, u) => s + u.value, 0n)
+      // What "Max" would offer: the whole pool minus a one-output fee.
+      const maxFee = estimateSendFee({ utxos: pool, amountAtomic: 0n, feeRatePerVByte: RATE, sendMax: true })
+      if (total <= maxFee) continue // nothing sendable at all; not this invariant's business
+      const maxAmount = total - maxFee
+
+      // Sample the range: the max itself, just under it, a half, and the floor.
+      for (const amount of [maxAmount, maxAmount - 1n, maxAmount / 2n, 1n]) {
+        if (amount <= 0n) continue
+        const fee = estimateSendFee({ utxos: pool, amountAtomic: amount, feeRatePerVByte: RATE })
+        const built = buildSend({ utxos: pool, recipient: RECIPIENT, amountAtomic: amount, feeAtomic: fee, changeAddress: CHANGE, changeAddressFor: () => CHANGE })
+        expect(built.amountAtomic).toBe(amount)
+      }
+    }
+  })
+
+  it('every build balances: inputs = amount + fee + change', () => {
+    const rnd = lcg(770177)
+    for (let case_ = 0; case_ < 300; case_ += 1) {
+      const pool = makePool(rnd)
+      const total = pool.reduce((s, u) => s + u.value, 0n)
+      const maxFee = estimateSendFee({ utxos: pool, amountAtomic: 0n, feeRatePerVByte: RATE, sendMax: true })
+      if (total <= maxFee) continue
+      const amount = (total - maxFee) / 2n
+      if (amount <= 0n) continue
+
+      const fee = estimateSendFee({ utxos: pool, amountAtomic: amount, feeRatePerVByte: RATE })
+      const built = buildSend({ utxos: pool, recipient: RECIPIENT, amountAtomic: amount, feeAtomic: fee, changeAddress: CHANGE, changeAddressFor: () => CHANGE })
+
+      const spent = built.unsigned.inputs.reduce((sum, i) => {
+        const coin = pool.find((u) => u.txid === i.prevTxid && u.vout === i.vout)
+        expect(coin).toBeDefined()
+        return sum + (coin?.value ?? 0n)
+      }, 0n)
+      // The fee absorbs a sub-dust remainder, so compare against the fee the
+      // build reports, not the estimate it started from.
+      expect(spent).toBe(built.amountAtomic + built.feeAtomic + built.changeAtomic)
+      expect(built.changeAtomic === 0n || built.changeAtomic > DUST_ATOMIC).toBe(true)
+    }
   })
 })
