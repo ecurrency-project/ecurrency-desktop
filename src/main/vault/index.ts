@@ -760,7 +760,10 @@ export function createWalletCore(): WalletCore {
     sweep: { scan: sweepScan, build: sweepBuild, confirm: sweepConfirm, cancel: disposeSweep },
     node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, setTor, status: nodeStatus, setNetwork },
     upgrade: {
-      info: async () => ({ enabled: active.upgrade !== null }),
+      info: async () => ({
+        enabled: active.upgrade !== null,
+        ...(active.upgrade !== null && UPGRADE !== null ? { minConvertValueSat: UPGRADE[NETWORK].minConvertValue.toString() } : {}),
+      }),
       status: async () => {
         const s = await requireUpgrade().status()
         return {
@@ -774,6 +777,7 @@ export function createWalletCore(): WalletCore {
             destScripthashHex: e.destScripthashHex,
             confirmed: e.confirmed,
             ...(e.blockHeight !== undefined ? { blockHeight: e.blockHeight } : {}),
+            ...(e.confirmations !== undefined ? { confirmations: e.confirmations } : {}),
           })),
         }
       },

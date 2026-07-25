@@ -45,6 +45,7 @@ export interface BtcChainReader {
   addressTxs(address: string): Promise<BtcHistoryTx[]>
   feeEstimates(): Promise<ReadonlyMap<number, number>>
   broadcast(rawTxHex: string): Promise<string>
+  tipHeight(): Promise<number>
 }
 
 /** Persisted staging cursor (sealed blob at the wiring layer). */
@@ -67,6 +68,8 @@ export interface UpgradeEpisode {
   readonly destScripthashHex: string | null
   readonly confirmed: boolean
   readonly blockHeight?: number
+  /** BTC confirmations at status time (credits need 6 + a 2h timer). */
+  readonly confirmations?: number
 }
 
 export interface UpgradeStatus {
@@ -245,6 +248,14 @@ export class UpgradeService {
     const master = await this.vault.getMasterKey()
     const episodes: UpgradeEpisode[] = []
     const seen = new Set<string>()
+    // One tip read per refresh gives every confirmed episode its depth; a
+    // failed read just omits the confirmation counters (cosmetic).
+    let tip: number | null = null
+    try {
+      tip = await this.chain.tipHeight()
+    } catch {
+      tip = null
+    }
     for (let i = 0; i <= currentIndex; i += 1) {
       const address = deriveBtcStagingAddress(master, i, this.network)
       for (const tx of await this.chain.addressTxs(address)) {
@@ -261,6 +272,9 @@ export class UpgradeService {
           destScripthashHex,
           confirmed: tx.status.confirmed,
           ...(tx.status.blockHeight !== undefined ? { blockHeight: tx.status.blockHeight } : {}),
+          ...(tx.status.blockHeight !== undefined && tip !== null && tip >= tx.status.blockHeight
+            ? { confirmations: tip - tx.status.blockHeight + 1 }
+            : {}),
         })
       }
     }
@@ -271,11 +285,13 @@ export class UpgradeService {
     try {
       const estimates = await this.chain.feeEstimates()
       const rate = estimates.get(this.params.feeTargetBlocks)
-      if (rate !== undefined && rate > 0) return rate
+      // Floor at 1 sat/vB: an idle (testnet) oracle can answer ~0.1, which
+      // sits below most nodes' minrelay — a tx that low may never propagate.
+      if (rate !== undefined && rate > 0) return Math.max(1, rate)
     } catch {
       // fall through to the fallback rate
     }
-    return this.params.fallbackFeeRate
+    return Math.max(1, this.params.fallbackFeeRate)
   }
 
   private assertConvertible(value: bigint): void {

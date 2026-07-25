@@ -1,5 +1,5 @@
 import { QRCodeSVG } from 'qrcode.react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { UpgradePlanView, UpgradeStatusView } from '../../shared/protocol'
 import { brand } from '../brand'
 import { formatToken } from '../lib/format'
@@ -158,6 +158,33 @@ export function Convert() {
   // must never open a mainnet explorer). Hidden until the network is known.
   const explorerTxBase = buildNet !== null ? (up?.sourceExplorerTxUrl?.[buildNet] ?? null) : null
 
+  // Consensus minimum, for the form hint and a pre-review gate.
+  const [minSat, setMinSat] = useState<string | null>(null)
+  useEffect(() => {
+    wallet
+      .upgradeInfo()
+      .then((i) => setMinSat(i.minConvertValueSat ?? null))
+      .catch(() => {})
+  }, [])
+  const belowMin = (() => {
+    if (convertAll || amount.trim() === '' || minSat === null) return false
+    try {
+      return BigInt(toSat(amount)) < BigInt(minSat)
+    } catch {
+      return false // not a number yet — the review gate has its own checks
+    }
+  })()
+
+  // Light client-side shape check for the Return address (main re-validates
+  // strictly on submit): legacy base58 or bech32 with the right network prefix.
+  const returnAddrLooksValid = useMemo(() => {
+    const a = returnAddr.trim()
+    if (a === '') return false
+    return buildNet === 'testnet'
+      ? /^[mn2][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) || /^tb1[02-9ac-hj-np-z]{8,87}$/i.test(a)
+      : /^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) || /^bc1[02-9ac-hj-np-z]{8,87}$/i.test(a)
+  }, [returnAddr, buildNet])
+
   return (
     <Screen center>
       <div style={{ maxWidth: 520, width: '100%', margin: '32px auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -228,6 +255,14 @@ export function Convert() {
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder={convertAll ? 'Entire balance (minus network fee)' : '0.0'}
                     aria-label={`Amount in ${src}`}
+                    state={belowMin ? 'error' : 'default'}
+                    hint={
+                      belowMin
+                        ? `Below the minimum of ${fromSat(minSat ?? '0')} ${src}.`
+                        : !convertAll && minSat !== null
+                          ? `Minimum ${fromSat(minSat)} ${src}`
+                          : undefined
+                    }
                   />
                 </div>
                 {/* Same height as .field (46px) so the row lines up. */}
@@ -258,7 +293,7 @@ export function Convert() {
                 </span>
               </div>
               {error !== null && <div className="field-hint field-hint--error">{error}</div>}
-              <Button size="cta" disabled={busy || !hasFunds || dest.trim() === '' || (!convertAll && amount.trim() === '')} onClick={() => void review()}>
+              <Button size="cta" disabled={busy || !hasFunds || dest.trim() === '' || (!convertAll && amount.trim() === '') || belowMin} onClick={() => void review()}>
                 {busy ? 'Preparing…' : hasFunds ? 'Review conversion' : `Waiting for ${src} deposit…`}
               </Button>
             </div>
@@ -298,8 +333,9 @@ export function Convert() {
               </div>
               <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-700)', wordBreak: 'break-all' }}>{txid}</code>
               <div style={{ fontSize: 12.5, color: 'var(--ink-500)', lineHeight: 1.5 }}>
-                {brand.assetLabel} will appear on your address after the {src} transaction confirms and the network
-                credits it (~3–4 hours). Track it below.
+                {brand.assetLabel} will appear on your address after the {src} transaction has 6 confirmations plus a
+                ~2 hour protocol delay (typically ~3 hours in total). Track it below. The deposit address in step 1 is
+                already up to date for your next conversion.
               </div>
               <Button
                 variant="secondary"
@@ -331,7 +367,11 @@ export function Convert() {
                   <div style={{ fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.txid}</div>
                 </div>
                 <span style={{ fontSize: 11.5, color: e.confirmed ? 'var(--ink-500)' : 'var(--warning)', flex: 'none' }}>
-                  {e.confirmed ? `confirmed${e.blockHeight !== undefined ? ` · ${String(e.blockHeight)}` : ''}` : 'pending'}
+                  {e.confirmed
+                    ? e.confirmations !== undefined && e.confirmations < 6
+                      ? `${String(e.confirmations)}/6 confirmations`
+                      : `confirmed · crediting ≤2h`
+                    : 'pending'}
                 </span>
                 {explorerTxBase !== null && (
                   <button
@@ -365,9 +405,18 @@ export function Convert() {
           ) : (
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
-                <TextField label={`Return all ${src} to`} mono value={returnAddr} onChange={(e) => setReturnAddr(e.target.value)} placeholder={`${src} address`} aria-label="Return address" />
+                <TextField
+                  label={`Return all ${src} to`}
+                  mono
+                  value={returnAddr}
+                  onChange={(e) => setReturnAddr(e.target.value)}
+                  placeholder={`${src} address`}
+                  aria-label="Return address"
+                  state={returnAddr.trim() !== '' && !returnAddrLooksValid ? 'error' : 'default'}
+                  hint={returnAddr.trim() !== '' && !returnAddrLooksValid ? `That does not look like a ${buildNet ?? 'mainnet'} ${src} address.` : undefined}
+                />
               </div>
-              <Button variant="secondary" style={{ height: 38 }} disabled={busy || returnAddr.trim() === ''} onClick={() => void doReturn()}>
+              <Button variant="secondary" style={{ height: 38 }} disabled={busy || !returnAddrLooksValid} onClick={() => void doReturn()}>
                 Return
               </Button>
             </div>
