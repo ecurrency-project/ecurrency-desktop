@@ -73,13 +73,14 @@ export function Convert() {
       .catch(() => setBtcSynced(null))
   }, [])
 
-  // Load status + prefill the destination with the wallet's own PQ address —
-  // the whole point of converting into a post-quantum chain.
+  // Load status + prefill the destination with the wallet's own receive
+  // address (classical ECDSA — the default receive type; PQ stays a
+  // deliberate choice via Receive → Falcon-512).
   useEffect(() => {
     refresh()
     const timer = setInterval(refresh, 30_000)
     wallet
-      .getReceiveAddress('falcon512')
+      .getReceiveAddress()
       .then((a) => setDest((d) => (d === '' ? a : d)))
       .catch(() => {})
     return () => clearInterval(timer)

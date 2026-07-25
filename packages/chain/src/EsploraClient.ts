@@ -20,6 +20,7 @@ import type {
   ChainTx,
   ChainTxIn,
   ChainTxOut,
+  CoinbaseInfo,
   ConfirmationStatus,
   FeeEstimates,
   NodeStatus,
@@ -616,6 +617,7 @@ function parseTx(raw: RawTx): ChainTx {
     fee: bigint;
     status: ConfirmationStatus;
     isCoinbase?: boolean;
+    coinbaseInfo?: CoinbaseInfo;
   } = {
     txid: requireString(raw.txid, 'txid'),
     version: parseTxVersion(raw),
@@ -626,6 +628,20 @@ function parseTx(raw: RawTx): ChainTx {
     status: parseStatus(raw.status),
   };
   if (typeof raw.is_coinbase === 'boolean') tx.isCoinbase = raw.is_coinbase;
+  // Upgrade coinbases carry their BTC provenance. The node reports tx_hash
+  // in INTERNAL byte order; reverse it into the display order explorers use.
+  const ci = (raw as { coinbase_info?: unknown }).coinbase_info;
+  if (typeof ci === 'object' && ci !== null) {
+    const o = ci as { block_height?: unknown; tx_hash?: unknown; out_num?: unknown; value?: unknown };
+    if (typeof o.tx_hash === 'string' && typeof o.block_height === 'number' && typeof o.out_num === 'number') {
+      tx.coinbaseInfo = {
+        btcTxid: (o.tx_hash.match(/../g) ?? []).reverse().join(''),
+        btcBlockHeight: o.block_height,
+        btcOutNum: o.out_num,
+        valueSat: typeof o.value === 'number' ? BigInt(o.value) : 0n,
+      };
+    }
+  }
   return tx;
 }
 

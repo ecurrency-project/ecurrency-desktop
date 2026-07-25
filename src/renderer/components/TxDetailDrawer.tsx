@@ -4,7 +4,7 @@ import { brand } from '../brand'
 import { formatNative, formatToken, historyAmount, shortHash, tokenLabels } from '../lib/format'
 import { useAdvancedMode } from '../lib/prefs'
 import { disassembleScript } from '../lib/script'
-import { loadTxDetail, loadTxRaw, saveTxLabel, useTokens } from '../lib/walletData'
+import { loadTxDetail, loadTxRaw, saveTxLabel, useBuildNetwork, useTokens } from '../lib/walletData'
 import { ChevDownIcon, CloseIcon, CopyIcon, ExternalIcon, PencilIcon } from '../ui'
 
 // Block explorer the "Explorer" button opens (brand-configured; hidden when the
@@ -21,6 +21,8 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
   const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
   const advanced = useAdvancedMode()
+  // For labelling upgrade-coinbase provenance with the right source ticker.
+  const buildNet = useBuildNetwork()
   const { data: tokensData } = useTokens()
   const tokenById = useMemo(() => new Map((tokensData ?? []).map((t) => [t.id, t] as const)), [tokensData])
 
@@ -171,6 +173,27 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
               <SummaryRow label="Fee" value={`${formatNative(detail.feeAtomic)} ${brand.assetLabel}`} />
               <SummaryRow label="Size" value={`${String(detail.sizeBytes)} bytes`} />
               <SummaryRow label="Txid" value={shortHash(tx.txid)} mono />
+            </div>
+          )}
+
+          {/* Upgrade-coinbase provenance: where this credit came from. The fee
+              row above IS the protocol fee for such credits (locked − credited). */}
+          {detail?.coinbaseInfo !== undefined && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <SummaryRow
+                label="Converted from"
+                value={`${brand.upgrade?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'} tx ${shortHash(detail.coinbaseInfo.btcTxid)}`}
+                mono
+                first
+              />
+              <SummaryRow
+                label="Source output"
+                value={`block #${String(detail.coinbaseInfo.btcBlockHeight)} · output ${String(detail.coinbaseInfo.btcOutNum)}`}
+              />
+              <SummaryRow
+                label="Locked value"
+                value={`${formatNative(detail.coinbaseInfo.valueSat)} ${brand.upgrade?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'}`}
+              />
             </div>
           )}
 

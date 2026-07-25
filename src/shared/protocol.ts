@@ -220,6 +220,17 @@ export interface TxDetail {
   /** Position of the tx within its block (0 = first). */
   readonly blockPos?: number
   readonly isCoinbase?: boolean
+  /**
+   * Upgrade-coinbase provenance: the source-chain (BTC) payment this credit
+   * stems from. txid is in display byte order; valueSat is what was locked
+   * BEFORE the protocol fee (the credit's fee field is that protocol fee).
+   */
+  readonly coinbaseInfo?: {
+    readonly btcTxid: string
+    readonly btcBlockHeight: number
+    readonly btcOutNum: number
+    readonly valueSat: string
+  }
 }
 
 // Last-known read-model, persisted (sealed with the seed key) so unlock/restart can

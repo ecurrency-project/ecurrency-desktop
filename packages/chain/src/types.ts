@@ -102,6 +102,21 @@ export interface ChainTx {
   readonly status: ConfirmationStatus;
   /** True for the block's coinbase (block-reward) transaction. */
   readonly isCoinbase?: boolean;
+  /** Upgrade-coinbase provenance: the source-chain payment this credit stems from. */
+  readonly coinbaseInfo?: CoinbaseInfo;
+}
+
+/**
+ * Where an upgrade coinbase came from: the BTC transaction output that paid
+ * the chain's lock script. `btcTxid` is in DISPLAY byte order (explorers);
+ * the node reports the internal order and the client reverses it.
+ */
+export interface CoinbaseInfo {
+  readonly btcTxid: string;
+  readonly btcBlockHeight: number;
+  readonly btcOutNum: number;
+  /** Satoshi locked on the BTC side (before the protocol fee). */
+  readonly valueSat: bigint;
 }
 
 export interface ChainTxIn {
