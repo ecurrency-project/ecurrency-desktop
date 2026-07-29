@@ -925,9 +925,10 @@ function ContactsCard() {
   // The address book is shared state: Send reads it through the same cache.
   // Editing here must publish the new list, or Send keeps offering a contact
   // that no longer exists until the window is reloaded.
+  // Add/edit/delete errors surface inside ContactDialog (onSubmit may throw);
+  // the only error owned here is the cache's load failure.
   const { data: contacts, error: loadError } = useContacts()
   const setContacts = cacheSetContacts
-  const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
 
   const list = contacts ?? []
@@ -965,9 +966,9 @@ function ContactsCard() {
           </div>
         ))
       )}
-      {(error ?? loadError?.message) !== undefined && (
+      {loadError !== undefined && (
         <div className="field-hint field-hint--error" style={{ padding: '0 18px 12px' }}>
-          {error ?? loadError?.message}
+          {loadError.message}
         </div>
       )}
 
