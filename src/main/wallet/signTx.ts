@@ -12,6 +12,7 @@ import {
   TX_TYPE_TOKENS,
   txid as computeTxid,
   type HDKey,
+  type Network,
   type SigningInput,
   type Transaction,
   type TxInput,
@@ -48,7 +49,7 @@ export function toCryptoTransaction(unsigned: UnsignedTx): Transaction {
 // branch AND derivation scheme. Runs in main only; each derived private key is
 // wiped immediately after signing. Returns the signed Transaction (siglist +
 // redeem script attached).
-export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey): Promise<Transaction> {
+export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey, network: Network): Promise<Transaction> {
   const tx = toCryptoTransaction(unsigned)
   // Each input is signed on its own branch by its own algorithm: classical inputs
   // with a secp256k1 child key (sync), PQ inputs with a Falcon-512 keypair (async,
@@ -62,13 +63,13 @@ export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey
     unsigned.inputs.map(async (input, index): Promise<SigningInput> => {
       const scheme = input.scheme !== undefined ? requireScheme(input.scheme) : activeScheme()
       if (input.algo === 'falcon512') {
-        const kp = await deriveFalconKeypair(master, input.account, input.chain, input.index, scheme)
+        const kp = await deriveFalconKeypair(master, input.account, input.chain, input.index, network, scheme)
         return { inputIndex: index, privateKey: kp.privateKey, publicKey: kp.publicKey, algo: 'falcon512' }
       }
       if (input.algo !== 'ecdsa') {
         throw new Error(`Unsupported signing algorithm: ${input.algo}`)
       }
-      const child = derivePath(master, nativePathFor(scheme, input.account, input.index, input.chain))
+      const child = derivePath(master, nativePathFor(scheme, input.account, input.index, network, input.chain))
       if (child.privateKey === null || child.publicKey === null) {
         throw new Error(`No key material for input ${index}`)
       }
@@ -83,7 +84,7 @@ export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey
 }
 
 /** Sign, serialize, and compute the txid. The wire hex is what gets broadcast. */
-export async function signUnsignedTx(unsigned: UnsignedTx, master: HDKey): Promise<SignedTx> {
-  const signed = await buildSignedTransaction(unsigned, master)
+export async function signUnsignedTx(unsigned: UnsignedTx, master: HDKey, network: Network): Promise<SignedTx> {
+  const signed = await buildSignedTransaction(unsigned, master, network)
   return { rawHex: toHex(serialize(signed)), txid: toHex(computeTxid(signed)) }
 }

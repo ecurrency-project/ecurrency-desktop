@@ -142,7 +142,7 @@ export async function buildSeedWatchDescriptor(opts: {
       const floors = indicesFor(meta, scheme.id)
       return {
         scheme: scheme.id,
-        classicalXpub: exportAccountXpubFor(master, scheme, account),
+        classicalXpub: exportAccountXpubFor(master, scheme, network, account),
         deriveFalcon: (chain: 0 | 1, index: number) => deriveFalconAddress(master, { account, chain, index, network, scheme }),
         pqFloors: { receive: floors.pqReceiveIndex, change: floors.pqChangeIndex },
       }

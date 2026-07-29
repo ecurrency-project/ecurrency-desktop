@@ -32,10 +32,12 @@ import { sha256 } from '@noble/hashes/sha256';
 
 import {
   activeScheme,
+  coinTypeFor,
   derivePath,
   type DerivationScheme,
   type HDKey,
 } from './bip32';
+import type { Network } from './constants';
 import {
   FALCON512_SEED_BYTES,
   falcon512KeygenFromSeed,
@@ -68,24 +70,27 @@ export const FALCON_HD_INFO = 'qbt/pq/falcon512/v1';
 export function nativePqPath(
   account: number,
   index: number,
+  network: Network,
   change: 0 | 1 = 0,
 ): string {
-  return nativePqPathFor(activeScheme(), account, index, change);
+  return nativePqPathFor(activeScheme(), account, index, network, change);
 }
 
 /**
  * {@link nativePqPath} for an EXPLICIT scheme — used when deriving on a
  * legacy scheme's branch (its coin_type differs from the active one). The
  * path shape and the HKDF stage are identical across schemes; only the
- * coin_type level changes.
+ * coin_type level changes (and, within a scheme, the network may select
+ * the BIP-44 testnet coin_type).
  */
 export function nativePqPathFor(
   scheme: DerivationScheme,
   account: number,
   index: number,
+  network: Network,
   change: 0 | 1 = 0,
 ): string {
-  return `m/${PURPOSE_FALCON512}'/${scheme.coinType}'/${account}'/${change}'/${index}'`;
+  return `m/${PURPOSE_FALCON512}'/${coinTypeFor(scheme, network)}'/${account}'/${change}'/${index}'`;
 }
 
 /**
@@ -109,9 +114,10 @@ export async function deriveFalconKeypair(
   account: number,
   change: 0 | 1,
   index: number,
+  network: Network,
   scheme: DerivationScheme = activeScheme(),
 ): Promise<Falcon512Keypair> {
-  const child = derivePath(master, nativePqPathFor(scheme, account, index, change));
+  const child = derivePath(master, nativePqPathFor(scheme, account, index, network, change));
   const ikm = child.privateKey;
   if (ikm === null) {
     // Unreachable from a seed-built master (hardened derivation already

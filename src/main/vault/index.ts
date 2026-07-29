@@ -292,7 +292,7 @@ export function createWalletCore(): WalletCore {
         getChangeAddress: () => sa.getChangeAddress(),
         getPqChangeAddress: () => sa.getPqChangeAddress(),
         advanceChange: (algo) => (algo === 'falcon512' ? sa.advancePqChange() : sa.advanceChange()),
-        sign: async (unsigned) => signUnsignedTx(unsigned, await signWith()),
+        sign: async (unsigned) => signUnsignedTx(unsigned, await signWith(), NETWORK),
         broadcast,
         // A spend changes the UTXO set, so drop the memoised pool immediately.
         onSpent: bustGather,
@@ -461,7 +461,7 @@ export function createWalletCore(): WalletCore {
   // sealed seed), used to detect a duplicate import. Best-effort: null if unreadable.
   const seedAccountXpub = async (id: string): Promise<string | null> => {
     try {
-      return exportAccountXpub(await openSeedMaster(id), 0)
+      return exportAccountXpub(await openSeedMaster(id), NETWORK, 0)
     } catch {
       return null
     }
@@ -474,7 +474,7 @@ export function createWalletCore(): WalletCore {
     const phrase = mnemonic.trim().replace(/\s+/g, ' ')
     if (!validateMnemonic(phrase)) throw new Error('That recovery phrase is not valid.')
     const pass = passphrase !== undefined && passphrase !== '' ? passphrase : undefined
-    const xpub = exportAccountXpub(masterKeyFromSeed(mnemonicToSeed(phrase, pass)), 0)
+    const xpub = exportAccountXpub(masterKeyFromSeed(mnemonicToSeed(phrase, pass)), NETWORK, 0)
     for (const e of registry.list()) {
       if (e.kind === 'seed' && (await seedAccountXpub(e.id)) === xpub) throw new Error('This wallet is already imported.')
     }

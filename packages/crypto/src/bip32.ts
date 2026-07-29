@@ -18,6 +18,7 @@
 // keygen seeds via HKDF — see `falconHd.ts`.
 
 import { HDKey } from '@scure/bip32';
+import type { Network } from './constants';
 
 export { HDKey };
 
@@ -67,14 +68,26 @@ export const HARDENED = 0x80000000;
  */
 export interface DerivationScheme {
   readonly id: string;
-  readonly coinType: number;
+  /**
+   * BIP-44 coin_type. A plain number applies to every network; a record
+   * follows the BIP-44 convention of a distinct testnet coin_type
+   * (usually 1, "testnet, all coins") next to the chain's registered
+   * mainnet number.
+   */
+  readonly coinType: number | Readonly<Record<Network, number>>;
   readonly label: string;
   readonly status: 'active' | 'legacy';
   readonly pathTemplate: (
     account: number,
     change: 0 | 1,
     index: number,
+    network: Network,
   ) => string;
+}
+
+/** Resolve a scheme's coin_type for the given network. */
+export function coinTypeFor(scheme: DerivationScheme, network: Network): number {
+  return typeof scheme.coinType === 'number' ? scheme.coinType : scheme.coinType[network];
 }
 
 /**
@@ -91,7 +104,7 @@ export const SCHEME_QBT_PLACEHOLDER: DerivationScheme = {
   coinType: 1,
   label: 'QBitcoin v1 (pre-SLIP-0044)',
   status: 'active',
-  pathTemplate: (account, change, index) =>
+  pathTemplate: (account, change, index, _network) =>
     `m/44'/1'/${account}'/${change}/${index}`,
 };
 
@@ -161,25 +174,24 @@ export const META_V1_SCHEME_ID: string = SCHEME_QBT_PLACEHOLDER.id;
 
 // ─── Convenience aliases ──────────────────────────────────────────────
 
-/** The active coin_type number. Convenience over `activeScheme().coinType`. */
-export const COIN_TYPE: number = activeScheme().coinType;
-
 /**
  * Standard BIP-44 path for a classical (secp256k1) address
  * under the *active* scheme.
  *
- *   m / 44' / <active coin_type>' / account' / change / index
+ *   m / 44' / <coin_type for network>' / account' / change / index
  *
  * `change = 0` is the receive chain, `change = 1` is the change chain
  * (used internally to receive transaction change so it doesn't pile up
- * on the receive addresses).
+ * on the receive addresses). The network decides the coin_type level for
+ * schemes that follow the BIP-44 testnet convention.
  */
 export function nativePath(
   account: number,
   index: number,
+  network: Network,
   change: 0 | 1 = 0,
 ): string {
-  return nativePathFor(activeScheme(), account, index, change);
+  return nativePathFor(activeScheme(), account, index, network, change);
 }
 
 /**
@@ -191,7 +203,8 @@ export function nativePathFor(
   scheme: DerivationScheme,
   account: number,
   index: number,
+  network: Network,
   change: 0 | 1 = 0,
 ): string {
-  return scheme.pathTemplate(account, change, index);
+  return scheme.pathTemplate(account, change, index, network);
 }

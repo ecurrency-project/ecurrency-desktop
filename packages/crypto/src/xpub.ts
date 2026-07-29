@@ -19,8 +19,8 @@ const ACCOUNT_DEPTH = 3;
 // The first three levels of the classical leaf path (purpose / coin / account),
 // taken from the scheme's own path template so it can never drift from the
 // leaf derivation scheme.
-function accountPath(scheme: DerivationScheme, account: number): string {
-  return nativePathFor(scheme, account, 0, 0).split('/').slice(0, ACCOUNT_DEPTH + 1).join('/');
+function accountPath(scheme: DerivationScheme, account: number, network: Network): string {
+  return nativePathFor(scheme, account, 0, network, 0).split('/').slice(0, ACCOUNT_DEPTH + 1).join('/');
 }
 
 /**
@@ -28,8 +28,8 @@ function accountPath(scheme: DerivationScheme, account: number): string {
  * of the ACTIVE scheme. Derived from the master key, but carries only public
  * material — safe to hand to a watch-only wallet.
  */
-export function exportAccountXpub(master: HDKey, account = 0): string {
-  return exportAccountXpubFor(master, activeScheme(), account);
+export function exportAccountXpub(master: HDKey, network: Network, account = 0): string {
+  return exportAccountXpubFor(master, activeScheme(), network, account);
 }
 
 /**
@@ -37,8 +37,8 @@ export function exportAccountXpub(master: HDKey, account = 0): string {
  * multi-scheme watch descriptor, which carries one classical xpub per scheme
  * (a legacy scheme's account node lives under a different coin_type).
  */
-export function exportAccountXpubFor(master: HDKey, scheme: DerivationScheme, account = 0): string {
-  return master.derive(accountPath(scheme, account)).publicExtendedKey;
+export function exportAccountXpubFor(master: HDKey, scheme: DerivationScheme, network: Network, account = 0): string {
+  return master.derive(accountPath(scheme, account, network)).publicExtendedKey;
 }
 
 /**

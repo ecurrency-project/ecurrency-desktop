@@ -9,7 +9,7 @@ import {
 import { addressSourceFromStored, parseWatchInput, type StoredWatchSource } from '../../src/main/wallet/watchSource'
 
 const master = masterKeyFromSeed(Uint8Array.from({ length: 64 }, (_, i) => (i * 9 + 2) & 0xff))
-const XPUB = exportAccountXpub(master, 0)
+const XPUB = exportAccountXpub(master, 'mainnet', 0)
 const pq = (fill: number): string => addressFromScripthash(new Uint8Array(32).fill(fill), 'mainnet')
 const classical = (fill: number): string => addressFromScripthash(new Uint8Array(20).fill(fill), 'mainnet')
 

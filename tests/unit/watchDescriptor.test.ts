@@ -14,7 +14,7 @@ import {
 } from '../../src/main/wallet/watchDescriptor'
 
 const master = masterKeyFromSeed(Uint8Array.from({ length: 64 }, (_, i) => (i * 5 + 1) & 0xff))
-const XPUB = exportAccountXpub(master, 0)
+const XPUB = exportAccountXpub(master, 'mainnet', 0)
 
 // Format-valid addresses without Falcon WASM: a 32-byte scripthash encodes to a PQ
 // address, a 20-byte one to a classical address.
@@ -103,7 +103,7 @@ describe('buildSeedWatchDescriptor', () => {
     expect(d.version).toBe(2)
     expect(d.schemes.map((s) => s.scheme)).toEqual(DERIVATION_SCHEMES.map((s) => s.id))
     for (const [i, scheme] of DERIVATION_SCHEMES.entries()) {
-      expect(d.schemes[i]!.classicalXpub).toBe(exportAccountXpubFor(masterA, scheme, 0))
+      expect(d.schemes[i]!.classicalXpub).toBe(exportAccountXpubFor(masterA, scheme, 'mainnet', 0))
     }
   })
 

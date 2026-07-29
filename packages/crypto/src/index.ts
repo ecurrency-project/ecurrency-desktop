@@ -41,7 +41,7 @@ export {
 
 // BIP-32 HD derivation (secp256k1 branch).
 export {
-  COIN_TYPE,
+  coinTypeFor,
   DERIVATION_SCHEMES,
   HARDENED,
   HDKey,
