@@ -5,7 +5,7 @@ import type { WalletMeta } from '../../src/main/wallet/meta'
 import { WATCH_DESCRIPTOR_KIND, type WatchDescriptor } from '../../src/main/wallet/watchDescriptor'
 
 const master = masterKeyFromSeed(Uint8Array.from({ length: 64 }, (_, i) => (i * 5 + 1) & 0xff))
-const XPUB = exportAccountXpub(master, 0)
+const XPUB = exportAccountXpub(master, 'mainnet', 0)
 
 // Format-valid addresses without Falcon WASM: 32-byte scripthash → PQ, 20-byte → classical.
 const pq = (fill: number): string => addressFromScripthash(new Uint8Array(32).fill(fill), 'mainnet')

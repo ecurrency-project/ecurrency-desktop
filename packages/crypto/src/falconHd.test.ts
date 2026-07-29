@@ -15,7 +15,7 @@ import { sha256 as nobleSha256 } from '@noble/hashes/sha256';
 import { describe, expect, it } from 'vitest';
 
 import { addressFromPubkey, decodeAddress } from './address';
-import { COIN_TYPE, derivePath, masterKeyFromSeed, type DerivationScheme } from './bip32';
+import { activeScheme, coinTypeFor, derivePath, masterKeyFromSeed, type DerivationScheme } from './bip32';
 import { mnemonicToSeed } from './bip39';
 import { toHex } from './encoding/hex';
 import {
@@ -41,12 +41,15 @@ function master() {
   return masterKeyFromSeed(mnemonicToSeed(MNEMONIC));
 }
 
+// The active scheme's mainnet coin_type, resolved the way derivation does.
+const CT = coinTypeFor(activeScheme(), 'mainnet');
+
 describe('nativePqPath', () => {
   it('builds the fully-hardened purpose-512 path on the active coin_type', () => {
     expect(PURPOSE_FALCON512).toBe(512);
-    expect(nativePqPath(0, 0)).toBe(`m/512'/${COIN_TYPE}'/0'/0'/0'`);
-    expect(nativePqPath(0, 0, 1)).toBe(`m/512'/${COIN_TYPE}'/0'/1'/0'`);
-    expect(nativePqPath(1, 2, 1)).toBe(`m/512'/${COIN_TYPE}'/1'/1'/2'`);
+    expect(nativePqPath(0, 0, 'mainnet')).toBe(`m/512'/${CT}'/0'/0'/0'`);
+    expect(nativePqPath(0, 0, 'mainnet', 1)).toBe(`m/512'/${CT}'/0'/1'/0'`);
+    expect(nativePqPath(1, 2, 'mainnet', 1)).toBe(`m/512'/${CT}'/1'/1'/2'`);
   });
 });
 
@@ -60,23 +63,23 @@ const FAKE_SCHEME: DerivationScheme = {
 
 describe('nativePqPathFor / scheme-explicit derivation', () => {
   it("builds the PQ path on the EXPLICIT scheme's coin_type", () => {
-    expect(nativePqPathFor(FAKE_SCHEME, 0, 0)).toBe("m/512'/7777'/0'/0'/0'");
-    expect(nativePqPathFor(FAKE_SCHEME, 1, 2, 1)).toBe("m/512'/7777'/1'/1'/2'");
+    expect(nativePqPathFor(FAKE_SCHEME, 0, 0, 'mainnet')).toBe("m/512'/7777'/0'/0'/0'");
+    expect(nativePqPathFor(FAKE_SCHEME, 1, 2, 'mainnet', 1)).toBe("m/512'/7777'/1'/1'/2'");
   });
 
   it('deriveFalconKeypair with an explicit scheme differs from the active one', async () => {
     const m = master();
-    const active = await deriveFalconKeypair(m, 0, 0, 0);
-    const explicit = await deriveFalconKeypair(m, 0, 0, 0, FAKE_SCHEME);
+    const active = await deriveFalconKeypair(m, 0, 0, 0, 'mainnet');
+    const explicit = await deriveFalconKeypair(m, 0, 0, 0, 'mainnet', FAKE_SCHEME);
     expect(toHex(explicit.publicKey)).not.toBe(toHex(active.publicKey));
     // …and is deterministic on its own path.
-    const again = await deriveFalconKeypair(m, 0, 0, 0, FAKE_SCHEME);
+    const again = await deriveFalconKeypair(m, 0, 0, 0, 'mainnet', FAKE_SCHEME);
     expect(toHex(again.publicKey)).toBe(toHex(explicit.publicKey));
   });
 
   it('the HKDF info label does not change with the scheme (versioned separately)', async () => {
     // Same leaf, same label: reproduce the explicit-scheme keypair's seed input.
-    const child = derivePath(master(), nativePqPathFor(FAKE_SCHEME, 0, 0, 0));
+    const child = derivePath(master(), nativePqPathFor(FAKE_SCHEME, 0, 0, 'mainnet', 0));
     const seed48 = hkdf(nobleSha256, child.privateKey!, undefined, FALCON_HD_INFO, 48);
     expect(seed48.length).toBe(48);
   });
@@ -88,7 +91,7 @@ describe('deriveFalconKeypair — HKDF stage (placeholder scheme)', () => {
     // NOTE: pinned against the qbt-v1 PLACEHOLDER (coinType stand-in); it
     // moves when the real QBitcoin coin_type lands. Brand branches pin
     // their own frozen value plus full mnemonic → address vectors.
-    const child = derivePath(master(), nativePqPath(0, 0, 0));
+    const child = derivePath(master(), nativePqPath(0, 0, 'mainnet', 0));
     const seed48 = hkdf(
       nobleSha256,
       child.privateKey!,
@@ -104,7 +107,7 @@ describe('deriveFalconKeypair — HKDF stage (placeholder scheme)', () => {
   });
 
   it('derived keys have the Falcon-512 shape', async () => {
-    const kp = await deriveFalconKeypair(master(), 0, 0, 0);
+    const kp = await deriveFalconKeypair(master(), 0, 0, 0, 'mainnet');
     expect(kp.publicKey.length).toBe(FALCON512_PUBLIC_KEY_BYTES);
     expect(kp.privateKey.length).toBe(FALCON512_PRIVATE_KEY_BYTES);
     expect(kp.publicKey[0]).toBe(0x09); // Falcon-512 version byte
@@ -112,7 +115,7 @@ describe('deriveFalconKeypair — HKDF stage (placeholder scheme)', () => {
   });
 
   it('derived addresses decode as the 32-byte PQ form', async () => {
-    const kp = await deriveFalconKeypair(master(), 0, 0, 0);
+    const kp = await deriveFalconKeypair(master(), 0, 0, 0, 'mainnet');
     const decoded = decodeAddress(
       addressFromPubkey(kp.publicKey, 'falcon512', 'mainnet'),
     );
@@ -124,8 +127,8 @@ describe('deriveFalconKeypair — HKDF stage (placeholder scheme)', () => {
 
 describe('deriveFalconKeypair — properties', () => {
   it('is deterministic: same cell twice → identical keypair', async () => {
-    const a = await deriveFalconKeypair(master(), 0, 0, 0);
-    const b = await deriveFalconKeypair(master(), 0, 0, 0);
+    const a = await deriveFalconKeypair(master(), 0, 0, 0, 'mainnet');
+    const b = await deriveFalconKeypair(master(), 0, 0, 0, 'mainnet');
     expect(toHex(a.publicKey)).toBe(toHex(b.publicKey));
     expect(toHex(a.privateKey)).toBe(toHex(b.privateKey));
   });
@@ -140,13 +143,13 @@ describe('deriveFalconKeypair — properties', () => {
     ];
     const pks = new Set<string>();
     for (const [a, c, i] of cells) {
-      pks.add(toHex((await deriveFalconKeypair(m, a, c, i)).publicKey));
+      pks.add(toHex((await deriveFalconKeypair(m, a, c, i, 'mainnet')).publicKey));
     }
     expect(pks.size).toBe(cells.length);
   });
 
   it('the derived keypair signs and verifies', async () => {
-    const kp = await deriveFalconKeypair(master(), 0, 0, 0);
+    const kp = await deriveFalconKeypair(master(), 0, 0, 0, 'mainnet');
     const msg = new TextEncoder().encode('pq phase-a');
     const sig = await falcon512Sign(msg, kp.privateKey);
     expect(sig.length).toBeGreaterThan(0);
@@ -155,5 +158,27 @@ describe('deriveFalconKeypair — properties', () => {
     expect(
       await falcon512Verify(sig, new TextEncoder().encode('tampered'), kp.publicKey),
     ).toBe(false);
+  });
+});
+
+describe('nativePqPathFor — per-network coin_type', () => {
+  const DUAL: DerivationScheme = {
+    id: 'fake-dual',
+    coinType: { mainnet: 2009, testnet: 1 },
+    label: 'fake dual',
+    status: 'legacy',
+    pathTemplate: (account, change, index, _network) => `m/44'/x/${account}'/${change}/${index}`,
+  };
+
+  it('the PQ branch follows the network coin_type too', () => {
+    expect(nativePqPathFor(DUAL, 0, 0, 'mainnet')).toBe("m/512'/2009'/0'/0'/0'");
+    expect(nativePqPathFor(DUAL, 0, 0, 'testnet')).toBe("m/512'/1'/0'/0'/0'");
+  });
+
+  it('same cell, different networks → different keypairs when coin_type differs', async () => {
+    const m = master();
+    const onMain = await deriveFalconKeypair(m, 0, 0, 0, 'mainnet', DUAL);
+    const onTest = await deriveFalconKeypair(m, 0, 0, 0, 'testnet', DUAL);
+    expect(toHex(onMain.publicKey)).not.toBe(toHex(onTest.publicKey));
   });
 });

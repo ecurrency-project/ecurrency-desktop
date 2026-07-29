@@ -30,7 +30,7 @@ export interface DeriveOptions {
 export function deriveClassicalAddress(master: HDKey, opts: DeriveOptions): string {
   const account = opts.account ?? 0
   const scheme = opts.scheme ?? activeScheme()
-  const child = derivePath(master, nativePathFor(scheme, account, opts.index, opts.chain))
+  const child = derivePath(master, nativePathFor(scheme, account, opts.index, opts.network, opts.chain))
   const pubkey = child.publicKey
   if (pubkey == null) {
     throw new Error('Derived HD node has no public key')
@@ -45,6 +45,6 @@ export function deriveClassicalAddress(master: HDKey, opts: DeriveOptions): stri
  */
 export async function deriveFalconAddress(master: HDKey, opts: DeriveOptions): Promise<string> {
   const account = opts.account ?? 0
-  const keypair = await deriveFalconKeypair(master, account, opts.chain, opts.index, opts.scheme ?? activeScheme())
+  const keypair = await deriveFalconKeypair(master, account, opts.chain, opts.index, opts.network, opts.scheme ?? activeScheme())
   return addressFromPubkey(keypair.publicKey, 'falcon512', opts.network)
 }

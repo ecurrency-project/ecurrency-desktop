@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  COIN_TYPE,
+  coinTypeFor,
   DERIVATION_SCHEMES,
   META_V1_SCHEME_ID,
   SCHEME_QBT_PLACEHOLDER,
@@ -118,7 +118,8 @@ describe('derivation scheme registry', () => {
     expect(v1).toBeDefined();
     expect(v1!.coinType).toBe(1);
     // Path shape frozen — coin_type level must match the scheme's coinType.
-    expect(v1!.pathTemplate(0, 0, 0)).toBe("m/44'/1'/0'/0/0");
+    expect(v1!.pathTemplate(0, 0, 0, 'mainnet')).toBe("m/44'/1'/0'/0/0");
+    expect(v1!.pathTemplate(0, 0, 0, 'testnet')).toBe("m/44'/1'/0'/0/0");
   });
 
   it('lists the active scheme first (scan priority, primary branch pickers)', () => {
@@ -142,45 +143,75 @@ describe('nativePathFor', () => {
     coinType: 7777,
     label: 'fake',
     status: 'legacy',
-    pathTemplate: (account, change, index) => `m/44'/7777'/${account}'/${change}/${index}`,
+    pathTemplate: (account, change, index, _network) => `m/44'/7777'/${account}'/${change}/${index}`,
   };
 
   it('builds the path from the EXPLICIT scheme, not the active one', () => {
-    expect(nativePathFor(fake, 0, 3, 1)).toBe("m/44'/7777'/0'/1/3");
-    expect(nativePathFor(fake, 0, 3, 1)).not.toBe(nativePath(0, 3, 1));
+    expect(nativePathFor(fake, 0, 3, 'mainnet', 1)).toBe("m/44'/7777'/0'/1/3");
+    expect(nativePathFor(fake, 0, 3, 'mainnet', 1)).not.toBe(nativePath(0, 3, 'mainnet', 1));
   });
 
   it('matches nativePath when given the active scheme', () => {
-    expect(nativePathFor(activeScheme(), 2, 7, 1)).toBe(nativePath(2, 7, 1));
+    expect(nativePathFor(activeScheme(), 2, 7, 'mainnet', 1)).toBe(nativePath(2, 7, 'mainnet', 1));
   });
 });
 
 describe('nativePath', () => {
+  // The active scheme's mainnet coin_type, resolved the way derivation does.
+  const CT = coinTypeFor(activeScheme(), 'mainnet');
+
   it('constructs the standard receive path under the active scheme', () => {
-    expect(nativePath(0, 0)).toBe(`m/44'/${COIN_TYPE}'/0'/0/0`);
+    expect(nativePath(0, 0, 'mainnet')).toBe(`m/44'/${CT}'/0'/0/0`);
   });
 
   it('builds change path with change=1', () => {
-    expect(nativePath(0, 5, 1)).toBe(`m/44'/${COIN_TYPE}'/0'/1/5`);
+    expect(nativePath(0, 5, 'mainnet', 1)).toBe(`m/44'/${CT}'/0'/1/5`);
   });
 
   it('can be passed to derivePath', () => {
     const m = masterKeyFromSeed(TV1_SEED);
-    const child = derivePath(m, nativePath(0, 0));
+    const child = derivePath(m, nativePath(0, 0, 'mainnet'));
     expect(child.privateKey).toBeDefined();
     expect(child.privateKey!.length).toBe(32);
   });
 
   it('different indices give different keys', () => {
     const m = masterKeyFromSeed(TV1_SEED);
-    const a = derivePath(m, nativePath(0, 0));
-    const b = derivePath(m, nativePath(0, 1));
+    const a = derivePath(m, nativePath(0, 0, 'mainnet'));
+    const b = derivePath(m, nativePath(0, 1, 'mainnet'));
     expect(toHex(a.privateKey!)).not.toBe(toHex(b.privateKey!));
   });
 
   it('matches the active scheme pathTemplate output', () => {
-    expect(nativePath(2, 7, 1)).toBe(
-      SCHEME_QBT_PLACEHOLDER.pathTemplate(2, 1, 7),
+    expect(nativePath(2, 7, 'mainnet', 1)).toBe(
+      SCHEME_QBT_PLACEHOLDER.pathTemplate(2, 1, 7, 'mainnet'),
     );
+  });
+});
+
+describe('coinTypeFor — per-network coin_type', () => {
+  // A scheme following the BIP-44 convention: the chain's registered number
+  // on mainnet, the shared testnet coin_type 1 on testnet. Brand branches
+  // use exactly this shape; the registry on the base stays single-numbered.
+  const dual: DerivationScheme = {
+    id: 'fake-dual',
+    coinType: { mainnet: 2009, testnet: 1 },
+    label: 'fake dual',
+    status: 'legacy',
+    pathTemplate: (account, change, index, network) =>
+      `m/44'/${coinTypeFor(dual, network)}'/${account}'/${change}/${index}`,
+  };
+
+  it('a plain number applies to every network', () => {
+    expect(coinTypeFor(SCHEME_QBT_PLACEHOLDER, 'mainnet')).toBe(1);
+    expect(coinTypeFor(SCHEME_QBT_PLACEHOLDER, 'testnet')).toBe(1);
+  });
+
+  it('a record resolves per network, and the path follows it', () => {
+    expect(coinTypeFor(dual, 'mainnet')).toBe(2009);
+    expect(coinTypeFor(dual, 'testnet')).toBe(1);
+    expect(nativePathFor(dual, 0, 0, 'mainnet')).toBe("m/44'/2009'/0'/0/0");
+    expect(nativePathFor(dual, 0, 0, 'testnet')).toBe("m/44'/1'/0'/0/0");
+    expect(nativePathFor(dual, 1, 3, 'mainnet', 1)).toBe("m/44'/2009'/1'/1/3");
   });
 });
