@@ -83,9 +83,11 @@ export type VaultRequest =
   | { readonly type: 'wallets.remove'; readonly id: string }
   | { readonly type: 'wallets.exportDescriptor' }
   | { readonly type: 'node.get' }
-  | { readonly type: 'node.select'; readonly kind: NodeKind }
+  | { readonly type: 'node.select'; readonly kind: NodeKind; readonly url?: string }
   | { readonly type: 'node.setOwn'; readonly url: string; readonly user?: string; readonly password?: string }
   | { readonly type: 'node.clearOwn' }
+  | { readonly type: 'node.addCustom'; readonly url: string; readonly name?: string }
+  | { readonly type: 'node.removeCustom'; readonly url: string }
   | { readonly type: 'node.setTor'; readonly enabled: boolean }
   | { readonly type: 'node.status' }
   | { readonly type: 'network.set'; readonly network: 'mainnet' | 'testnet' }
@@ -366,7 +368,14 @@ export interface WalletInfo {
 
 // The chain backends the wallet can point at. 'public' is the bundled node, 'own' a
 // user-run Esplora REST node, 'electrum' the Electrum bridge (not yet wired).
-export type NodeKind = 'public' | 'own' | 'electrum'
+export type NodeKind = 'public' | 'own' | 'electrum' | 'custom'
+
+/** A user-added PUBLIC esplora instance (community-hosted). No credentials —
+ *  those belong to the own-node slot; these join the failover pool. */
+export interface CustomNodeView {
+  readonly url: string
+  readonly name?: string
+}
 
 // The node-selection settings the Network card renders: which slot is active, the
 // public node's URL (for display), the user's own-node URL if set, and the Tor flag.
@@ -374,6 +383,10 @@ export interface NodeSettings {
   readonly selected: NodeKind
   readonly publicUrl: string
   readonly ownUrl?: string
+  /** User-added public nodes (see CustomNodeView). */
+  readonly customNodes: readonly CustomNodeView[]
+  /** Which custom node is active when `selected === 'custom'`. */
+  readonly selectedCustomUrl?: string
   readonly tor: boolean
   /** Which chain this BUILD runs on (compile-time constant, not a user setting). */
   readonly network: 'mainnet' | 'testnet'
@@ -518,9 +531,13 @@ export interface WalletApi {
   /** Current node-selection settings (slots + Tor flag). */
   getNode(): Promise<NodeSettings>
   /** Activate a node slot (public/own); rebuilds the session. Returns updated settings. */
-  selectNode(kind: NodeKind): Promise<NodeSettings>
+  selectNode(kind: NodeKind, url?: string): Promise<NodeSettings>
   /** Set the user's own-node URL with optional Basic-auth (probes it first); activates it. Returns updated settings. */
   setOwnNode(url: string, user?: string, password?: string): Promise<NodeSettings>
+  /** Add (or rename) a user-provided PUBLIC esplora node; probes it first. Returns updated settings. */
+  addCustomNode(url: string, name?: string): Promise<NodeSettings>
+  /** Remove a custom node; falls back to the public slot if it was active. Returns updated settings. */
+  removeCustomNode(url: string): Promise<NodeSettings>
   /** Clear the own-node URL and fall back to the public node. Returns updated settings. */
   clearOwnNode(): Promise<NodeSettings>
   /** Persist the Tor flag (routing not yet wired). Returns updated settings. */

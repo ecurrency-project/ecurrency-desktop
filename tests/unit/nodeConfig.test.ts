@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -67,7 +67,7 @@ describe('NodeConfigStore', () => {
 
   it('defaults to the public slot with Tor off', () => {
     const s = new NodeConfigStore(freshFile()).getSettings()
-    expect(s).toEqual({ selected: 'public', tor: false })
+    expect(s).toEqual({ selected: 'public', tor: false, customNodes: [] })
   })
 
   it('persists an own-node URL + selection across instances', () => {
@@ -75,7 +75,7 @@ describe('NodeConfigStore', () => {
     const store = new NodeConfigStore(file)
     store.setOwnUrl('http://127.0.0.1:9668')
     store.setSelected('own')
-    expect(new NodeConfigStore(file).getSettings()).toEqual({ selected: 'own', ownUrl: 'http://127.0.0.1:9668', tor: false })
+    expect(new NodeConfigStore(file).getSettings()).toEqual({ selected: 'own', ownUrl: 'http://127.0.0.1:9668', tor: false, customNodes: [] })
   })
 
   it('clearing the own URL falls back to the public slot', () => {
@@ -101,5 +101,95 @@ describe('NodeConfigStore', () => {
     // setSelected('own') with no URL set: read() guards it back to public.
     new NodeConfigStore(file).setSelected('own')
     expect(new NodeConfigStore(file).getSettings().selected).toBe('public')
+  })
+})
+
+describe('NodeConfigStore — custom public nodes', () => {
+  const file = (): string => join(mkdtempSync(join(tmpdir(), 'nodecfg-')), 'node.json')
+
+  it('adds, persists and renames custom nodes (deduped by URL)', () => {
+    const path = file()
+    const store = new NodeConfigStore(path)
+    store.addCustomNode('https://a.example', 'Alpha')
+    store.addCustomNode('https://b.example')
+    store.addCustomNode('https://a.example', 'Alpha Two') // rename, not duplicate
+    const again = new NodeConfigStore(path)
+    expect(again.getSettings().customNodes).toEqual([
+      { url: 'https://b.example' },
+      { url: 'https://a.example', name: 'Alpha Two' },
+    ])
+  })
+
+  it('selects a custom node and survives a reload', () => {
+    const path = file()
+    const store = new NodeConfigStore(path)
+    store.addCustomNode('https://a.example')
+    store.setSelected('custom', 'https://a.example')
+    const again = new NodeConfigStore(path)
+    expect(again.getSettings().selected).toBe('custom')
+    expect(again.getSettings().selectedCustomUrl).toBe('https://a.example')
+  })
+
+  it('refuses to select a custom node that is not in the list', () => {
+    const store = new NodeConfigStore(file())
+    expect(() => store.setSelected('custom', 'https://ghost.example')).toThrow(/not in the list/)
+  })
+
+  it('removing the ACTIVE custom node falls back to the public slot', () => {
+    const path = file()
+    const store = new NodeConfigStore(path)
+    store.addCustomNode('https://a.example')
+    store.setSelected('custom', 'https://a.example')
+    store.removeCustomNode('https://a.example')
+    const s = new NodeConfigStore(path).getSettings()
+    expect(s.selected).toBe('public')
+    expect(s.selectedCustomUrl).toBeUndefined()
+    expect(s.customNodes).toEqual([])
+  })
+
+  it('removing an INACTIVE custom node keeps the selection', () => {
+    const path = file()
+    const store = new NodeConfigStore(path)
+    store.addCustomNode('https://a.example')
+    store.addCustomNode('https://b.example')
+    store.setSelected('custom', 'https://a.example')
+    store.removeCustomNode('https://b.example')
+    const s = new NodeConfigStore(path).getSettings()
+    expect(s.selected).toBe('custom')
+    expect(s.selectedCustomUrl).toBe('https://a.example')
+  })
+
+  it('clearing the own URL leaves custom nodes untouched', () => {
+    const path = file()
+    const store = new NodeConfigStore(path)
+    store.addCustomNode('https://a.example', 'Alpha')
+    store.setOwnUrl('http://127.0.0.1:9668')
+    store.setSelected('own')
+    store.clearOwnUrl()
+    const s = new NodeConfigStore(path).getSettings()
+    expect(s.selected).toBe('public')
+    expect(s.customNodes).toEqual([{ url: 'https://a.example', name: 'Alpha' }])
+  })
+
+  it('drops malformed custom entries on read instead of failing', () => {
+    const path = file()
+    const store = new NodeConfigStore(path)
+    store.addCustomNode('https://a.example')
+    // Corrupt the stored list by hand: only the valid entry must survive.
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { customNodes: unknown[] }
+    raw.customNodes = [...raw.customNodes, null, 42, { name: 'no-url' }, { url: '' }]
+    writeFileSync(path, JSON.stringify(raw))
+    expect(new NodeConfigStore(path).getSettings().customNodes).toEqual([{ url: 'https://a.example' }])
+  })
+
+  it('a stored custom selection pointing at a missing node falls back to public', () => {
+    const path = file()
+    const store = new NodeConfigStore(path)
+    store.addCustomNode('https://a.example')
+    store.setSelected('custom', 'https://a.example')
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { customNodes: unknown[] }
+    raw.customNodes = []
+    writeFileSync(path, JSON.stringify(raw))
+    expect(new NodeConfigStore(path).getSettings().selected).toBe('public')
   })
 })

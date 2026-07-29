@@ -4,23 +4,40 @@ import { dirname } from 'node:path'
 // Node-selection configuration for the Network card.
 //
 // A small PLAIN JSON file (like the wallet registry): which backend slot is active
-// ('public' or 'own'), the user's own-node URL if set, and the Tor flag. It holds no
-// key material and must be readable at startup so the chain client can be built
-// before any unlock. Electrum is not persisted yet (its slot is not wired).
+// ('public', 'own' or one of the user-added public nodes), the user's own-node URL
+// if set, the community ("custom") node list, and the Tor flag. It holds no key
+// material and must be readable at startup so the chain client can be built before
+// any unlock. Electrum is not persisted yet (its slot is not wired).
+//
+// Custom nodes are PUBLIC esplora instances anyone can host — unlike the own
+// node they carry no credentials and participate in failover alongside the
+// bundled endpoints. The wallet talks to every backend over the same Esplora
+// REST dialect; there is no protocol choice to store.
 
-export type StoredNodeKind = 'public' | 'own'
+export type StoredNodeKind = 'public' | 'own' | 'custom'
+
+export interface CustomNodeStored {
+  readonly url: string
+  /** Display label; the URL's host is shown when absent. */
+  readonly name?: string
+}
 
 export interface NodeSettingsStored {
   readonly selected: StoredNodeKind
+  /** Which custom node is active when `selected === 'custom'`. */
+  readonly selectedCustomUrl?: string
   readonly ownUrl?: string
   readonly tor: boolean
+  readonly customNodes: readonly CustomNodeStored[]
 }
 
 interface NodeConfigFile {
   readonly version: number
   readonly selected: StoredNodeKind
+  readonly selectedCustomUrl?: string
   readonly ownUrl?: string
   readonly tor: boolean
+  readonly customNodes: readonly CustomNodeStored[]
 }
 
 const NODE_CONFIG_VERSION = 1
@@ -33,13 +50,47 @@ export class NodeConfigStore {
   }
 
   getSettings(): NodeSettingsStored {
-    const s: { selected: StoredNodeKind; ownUrl?: string; tor: boolean } = { selected: this.data.selected, tor: this.data.tor }
+    const s: { selected: StoredNodeKind; selectedCustomUrl?: string; ownUrl?: string; tor: boolean; customNodes: readonly CustomNodeStored[] } = {
+      selected: this.data.selected,
+      tor: this.data.tor,
+      customNodes: this.data.customNodes,
+    }
+    if (this.data.selectedCustomUrl !== undefined) s.selectedCustomUrl = this.data.selectedCustomUrl
     if (this.data.ownUrl !== undefined) s.ownUrl = this.data.ownUrl
     return s
   }
 
-  setSelected(kind: StoredNodeKind): void {
+  /** Activate a slot. Selecting 'custom' requires the URL of a stored custom node. */
+  setSelected(kind: StoredNodeKind, customUrl?: string): void {
+    if (kind === 'custom') {
+      if (customUrl === undefined || !this.data.customNodes.some((c) => c.url === customUrl)) {
+        throw new Error('That node is not in the list.')
+      }
+      this.persist({ ...this.data, selected: 'custom', selectedCustomUrl: customUrl })
+      return
+    }
+    // Leaving 'custom' keeps selectedCustomUrl around as a harmless memo.
     this.persist({ ...this.data, selected: kind })
+  }
+
+  /** Add a public (community) node, or rename it when the URL is already listed. */
+  addCustomNode(url: string, name?: string): void {
+    const entry: CustomNodeStored = name !== undefined && name.trim() !== '' ? { url, name: name.trim() } : { url }
+    const rest = this.data.customNodes.filter((c) => c.url !== url)
+    this.persist({ ...this.data, customNodes: [...rest, entry] })
+  }
+
+  /** Remove a custom node; if it was the active slot, fall back to the public node. */
+  removeCustomNode(url: string): void {
+    const customNodes = this.data.customNodes.filter((c) => c.url !== url)
+    const wasActive = this.data.selected === 'custom' && this.data.selectedCustomUrl === url
+    const next: NodeConfigFile = { ...this.data, customNodes, selected: wasActive ? 'public' : this.data.selected }
+    if (wasActive) {
+      const { selectedCustomUrl: _dropped, ...rest } = next
+      this.persist(rest as NodeConfigFile)
+      return
+    }
+    this.persist(next)
   }
 
   setOwnUrl(url: string): void {
@@ -47,8 +98,10 @@ export class NodeConfigStore {
   }
 
   // Drop the own-node URL; if it was the active slot, fall back to the public node.
+  // Custom nodes and the selected-custom memo are unrelated and survive.
   clearOwnUrl(): void {
-    this.persist({ version: NODE_CONFIG_VERSION, selected: this.data.selected === 'own' ? 'public' : this.data.selected, tor: this.data.tor })
+    const { ownUrl: _dropped, ...rest } = this.data
+    this.persist({ ...rest, selected: this.data.selected === 'own' ? 'public' : this.data.selected })
   }
 
   setTor(enabled: boolean): void {
@@ -65,14 +118,44 @@ export class NodeConfigStore {
 
   private read(): NodeConfigFile {
     try {
-      const p = JSON.parse(readFileSync(this.file, 'utf8')) as { selected?: unknown; ownUrl?: unknown; tor?: unknown }
+      const p = JSON.parse(readFileSync(this.file, 'utf8')) as {
+        selected?: unknown
+        selectedCustomUrl?: unknown
+        ownUrl?: unknown
+        tor?: unknown
+        customNodes?: unknown
+      }
       const ownUrl = typeof p.ownUrl === 'string' && p.ownUrl.length > 0 ? p.ownUrl : undefined
-      // 'own' only makes sense with a URL; otherwise fall back to the public node.
-      const selected: StoredNodeKind = p.selected === 'own' && ownUrl !== undefined ? 'own' : 'public'
-      const base: NodeConfigFile = { version: NODE_CONFIG_VERSION, selected, tor: p.tor === true }
-      return ownUrl !== undefined ? { ...base, ownUrl } : base
+      // Tolerant parse: malformed entries are dropped, not fatal (a broken
+      // config must never strand the wallet without a backend).
+      const customNodes: CustomNodeStored[] = Array.isArray(p.customNodes)
+        ? p.customNodes.flatMap((c: unknown): CustomNodeStored[] => {
+            if (typeof c !== 'object' || c === null) return []
+            const { url, name } = c as { url?: unknown; name?: unknown }
+            if (typeof url !== 'string' || url.length === 0) return []
+            return [typeof name === 'string' && name.length > 0 ? { url, name } : { url }]
+          })
+        : []
+      const selectedCustomUrl =
+        typeof p.selectedCustomUrl === 'string' && customNodes.some((c) => c.url === p.selectedCustomUrl)
+          ? p.selectedCustomUrl
+          : undefined
+      // Each slot only makes sense with its target present; otherwise fall
+      // back to the bundled public node.
+      const selected: StoredNodeKind =
+        p.selected === 'own' && ownUrl !== undefined
+          ? 'own'
+          : p.selected === 'custom' && selectedCustomUrl !== undefined
+            ? 'custom'
+            : 'public'
+      const base: NodeConfigFile = { version: NODE_CONFIG_VERSION, selected, tor: p.tor === true, customNodes }
+      return {
+        ...base,
+        ...(ownUrl !== undefined ? { ownUrl } : {}),
+        ...(selectedCustomUrl !== undefined ? { selectedCustomUrl } : {}),
+      }
     } catch {
-      return { version: NODE_CONFIG_VERSION, selected: 'public', tor: false }
+      return { version: NODE_CONFIG_VERSION, selected: 'public', tor: false, customNodes: [] }
     }
   }
 }

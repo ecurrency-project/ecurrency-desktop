@@ -109,13 +109,22 @@ const SWEEP: SweepOps = {
 }
 
 const NODE: NodeOps = {
-  get: () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: false, hasAuth: false }),
-  select: async (kind) => ({ selected: kind, publicUrl: 'https://api.example.org', network: 'mainnet', tor: false, hasAuth: false }),
-  setOwn: async (url, user) => ({ selected: 'own', publicUrl: 'https://api.example.org', network: 'mainnet', ownUrl: url, tor: false, hasAuth: user !== undefined }),
-  clearOwn: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: false, hasAuth: false }),
-  setTor: (enabled) => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', tor: enabled, hasAuth: false }),
+  get: () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
+  select: async (kind) => ({ selected: kind, publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
+  setOwn: async (url, user) => ({ selected: 'own', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], ownUrl: url, tor: false, hasAuth: user !== undefined }),
+  clearOwn: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
+  setTor: (enabled) => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: enabled, hasAuth: false }),
   status: async () => ({ url: 'https://api.example.org', reachable: true, chain: 'main', blockHeight: 1, syncing: false, latencyMs: 5 }),
   setNetwork: async () => {},
+  addCustom: async (url, name) => ({
+    selected: 'public',
+    publicUrl: 'https://api.example.org',
+    network: 'mainnet',
+    customNodes: [name !== undefined ? { url, name } : { url }],
+    tor: false,
+    hasAuth: false,
+  }),
+  removeCustom: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
 }
 
 const UPGRADE_OPS: UpgradeOps = {

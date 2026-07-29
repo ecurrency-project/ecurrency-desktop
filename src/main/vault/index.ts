@@ -29,7 +29,7 @@ import { buildSeedWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } fr
 import { createWatchAddressSource, parseWatchInput, WatchSourceStore } from '../wallet/watchSource'
 import { dataRootFor, readNetworkProfile, writeNetworkProfile } from './networkProfile'
 import { basicAuthHeader, NodeAuthStore, type NodeAuth } from './nodeAuth'
-import { NodeConfigStore, normalizeNodeUrl, type NodeSettingsStored } from './nodeConfig'
+import { NodeConfigStore, normalizeNodeUrl, type NodeSettingsStored, type StoredNodeKind } from './nodeConfig'
 import { VaultOrchestrator, type AddressOps, type ChainOps, type CoinOps, type SendOps } from './orchestrator'
 import { DEFAULT_WALLET_ID, migrateLegacyLayout, walletDir, WalletRegistry } from './registry'
 import { FileVaultStorage } from './storage'
@@ -95,10 +95,41 @@ export function createWalletCore(): WalletCore {
 
   const publicEndpoints = nodesFor(NETWORK)
   const PUBLIC_URL = publicEndpoints[0]?.url ?? ''
-  const endpointsFor = (s: NodeSettingsStored): NodeEndpoint[] =>
-    s.selected === 'own' && s.ownUrl !== undefined
-      ? [{ name: 'Your own node', url: s.ownUrl, protocol: 'esplora', network: NETWORK, operator: 'Self-hosted', priority: 1 }]
-      : publicEndpoints
+  // Display fallback for unnamed custom nodes ("https://x.y/api" → "x.y").
+  const hostOfUrl = (url: string): string => {
+    try {
+      return new URL(url).host
+    } catch {
+      return url
+    }
+  }
+  // The failover pool. The own node stays ALONE when selected (it may carry
+  // credentials, and the point of self-hosting is not leaking queries to
+  // anyone else). Public backends — bundled and user-added — are
+  // interchangeable, so they mix: the chosen one gets priority 1 and the
+  // rest follow as fallback.
+  const endpointsFor = (s: NodeSettingsStored): NodeEndpoint[] => {
+    if (s.selected === 'own' && s.ownUrl !== undefined) {
+      return [{ name: 'Your own node', url: s.ownUrl, protocol: 'esplora', network: NETWORK, operator: 'Self-hosted', priority: 1 }]
+    }
+    const customEndpoints: NodeEndpoint[] = s.customNodes.map((c, i) => ({
+      name: c.name ?? hostOfUrl(c.url),
+      url: c.url,
+      protocol: 'esplora',
+      network: NETWORK,
+      operator: 'User-added',
+      // Behind the bundled endpoints by default; the selected one is lifted below.
+      priority: 100 + i,
+    }))
+    const pool = [...publicEndpoints, ...customEndpoints]
+    if (s.selected === 'custom' && s.selectedCustomUrl !== undefined) {
+      const chosen = pool.find((e) => e.url === s.selectedCustomUrl)
+      if (chosen !== undefined) {
+        return [{ ...chosen, priority: 1 }, ...pool.filter((e) => e.url !== s.selectedCustomUrl)]
+      }
+    }
+    return pool
+  }
   // Build a client for the current settings, attaching Basic auth only for the own node
   // (and only when a credential is loaded — i.e. unlocked).
   const buildChainClient = (): ChainClient => {
@@ -574,13 +605,25 @@ export function createWalletCore(): WalletCore {
   // own-node URL if set, and the Tor flag.
   const nodeSettings = (): NodeSettings => {
     const s = nodeConfig.getSettings()
-    const out: { selected: NodeKind; publicUrl: string; ownUrl?: string; tor: boolean; hasAuth: boolean; authUser?: string; network: typeof NETWORK } = {
+    const out: {
+      selected: NodeKind
+      publicUrl: string
+      ownUrl?: string
+      customNodes: NodeSettings['customNodes']
+      selectedCustomUrl?: string
+      tor: boolean
+      hasAuth: boolean
+      authUser?: string
+      network: typeof NETWORK
+    } = {
       selected: s.selected,
       publicUrl: PUBLIC_URL,
+      customNodes: s.customNodes.map((c) => (c.name !== undefined ? { url: c.url, name: c.name } : { url: c.url })),
       tor: s.tor,
       hasAuth: ownAuth !== null,
       network: NETWORK,
     }
+    if (s.selectedCustomUrl !== undefined) out.selectedCustomUrl = s.selectedCustomUrl
     if (s.ownUrl !== undefined) out.ownUrl = s.ownUrl
     if (ownAuth?.user !== undefined && ownAuth.user !== '') out.authUser = ownAuth.user
     return out
@@ -592,11 +635,37 @@ export function createWalletCore(): WalletCore {
     rebuildActive()
   }
 
-  // Activate a slot. 'electrum' isn't wired yet; 'own' needs a URL set first.
-  const selectNode = async (kind: NodeKind): Promise<NodeSettings> => {
+  // Activate a slot. 'electrum' isn't wired yet; 'own' needs a URL set first;
+  // 'custom' needs the URL of a node from the stored list.
+  const selectNode = async (kind: NodeKind, url?: string): Promise<NodeSettings> => {
     if (kind === 'electrum') throw new Error('The Electrum backend is not available yet.')
     if (kind === 'own' && nodeConfig.getSettings().ownUrl === undefined) throw new Error('Set your node URL first.')
-    nodeConfig.setSelected(kind)
+    nodeConfig.setSelected(kind as StoredNodeKind, url)
+    applyNode()
+    return nodeSettings()
+  }
+
+  // Add (or rename) a user-provided PUBLIC esplora node. Probed first, exactly
+  // like the own node — a URL that is down or serves the wrong chain must not
+  // enter the failover pool. No credentials here by design: auth belongs to
+  // the own-node slot; a community endpoint everyone shares has no secrets.
+  const addCustomNode = async (rawUrl: string, name?: string): Promise<NodeSettings> => {
+    const url = normalizeNodeUrl(rawUrl)
+    if (nodeConfig.getSettings().ownUrl === url) {
+      throw new Error('That URL is already configured as your own node.')
+    }
+    const probe: NodeEndpoint = { name: 'Probe', url, protocol: 'esplora', network: NETWORK, operator: 'User-added', priority: 1 }
+    const status = await new ChainClient({ network: NETWORK, endpoints: [probe] }).getNodeStatus()
+    const expectedChain = NETWORK === 'mainnet' ? 'main' : 'testnet'
+    if (status.chain !== expectedChain) throw new Error(`That node serves ${status.chain ?? 'an unknown chain'}, but this wallet runs on ${NETWORK}.`)
+    nodeConfig.addCustomNode(url, name)
+    applyNode()
+    return nodeSettings()
+  }
+
+  // Remove a custom node (the store falls back to 'public' if it was active).
+  const removeCustomNode = async (url: string): Promise<NodeSettings> => {
+    nodeConfig.removeCustomNode(url)
     applyNode()
     return nodeSettings()
   }
@@ -611,7 +680,7 @@ export function createWalletCore(): WalletCore {
     const replacing = password !== undefined && password !== ''
     const auth: NodeAuth | null = replacing ? (user !== undefined && user !== '' ? { user, password } : { password }) : ownAuth
     const authHeader = auth !== null ? basicAuthHeader(auth) : undefined
-    const status = await new ChainClient({ network: NETWORK, endpoints: endpointsFor({ selected: 'own', ownUrl: url, tor: false }), transport: authHeader !== undefined ? { authHeader } : undefined }).getNodeStatus()
+    const status = await new ChainClient({ network: NETWORK, endpoints: endpointsFor({ selected: 'own', ownUrl: url, tor: false, customNodes: [] }), transport: authHeader !== undefined ? { authHeader } : undefined }).getNodeStatus()
     // The node reports "main" / "testnet" / "regtest"; hold it against the
     // network THIS build runs on, not a hardcoded mainnet.
     const expectedChain = NETWORK === 'mainnet' ? 'main' : 'testnet'
@@ -758,7 +827,7 @@ export function createWalletCore(): WalletCore {
     contacts,
     wallets: { list: listWallets, add: addWatchWallet, addSeed: addSeedWallet, inspectKey, addKey: addKeyWallet, restore: restoreFromMnemonic, switch: switchWallet, rename: renameWallet, remove: removeWallet, exportDescriptor: exportWatchDescriptor },
     sweep: { scan: sweepScan, build: sweepBuild, confirm: sweepConfirm, cancel: disposeSweep },
-    node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, setTor, status: nodeStatus, setNetwork },
+    node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, addCustom: addCustomNode, removeCustom: removeCustomNode, setTor, status: nodeStatus, setNetwork },
     upgrade: {
       info: async () => ({
         enabled: active.upgrade !== null,
