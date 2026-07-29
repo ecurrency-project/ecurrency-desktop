@@ -66,6 +66,7 @@ function hostOf(url: string): string {
 function NetworkCard() {
   const [settings, setSettings] = useState<NodeSettings | null>(null)
   const [editing, setEditing] = useState(false)
+  const [addingCustom, setAddingCustom] = useState(false)
   const node = useNodeStatus()
 
   useEffect(() => {
@@ -84,16 +85,25 @@ function NetworkCard() {
     void probeNode()
   }
 
-  async function choose(kind: NodeKind): Promise<void> {
-    if (settings === null || kind === settings.selected) return
+  async function choose(kind: NodeKind, url?: string): Promise<void> {
+    if (settings === null) return
+    if (kind === settings.selected && (kind !== 'custom' || url === settings.selectedCustomUrl)) return
     if (kind === 'own' && settings.ownUrl === undefined) {
       setEditing(true)
       return
     }
     try {
-      applySettings(await wallet.selectNode(kind))
+      applySettings(await wallet.selectNode(kind, url))
     } catch {
       // e.g. Electrum not available yet — ignore.
+    }
+  }
+
+  async function removeCustom(url: string): Promise<void> {
+    try {
+      applySettings(await wallet.removeCustomNode(url))
+    } catch {
+      // Removal only touches local config; a failure here is transient.
     }
   }
 
@@ -114,13 +124,95 @@ function NetworkCard() {
           </Button>
         }
       />
+      {/* Community-hosted public esplora instances the user added. They join
+          the failover pool; the radio makes one of them primary. */}
+      {(settings?.customNodes ?? []).map((c) => (
+        <NodeSlot
+          key={c.url}
+          icon={<GlobeIcon size={18} />}
+          name={c.name ?? hostOf(c.url)}
+          detail={`${hostOf(c.url)} · Esplora REST · added by you`}
+          selected={selected === 'custom' && settings?.selectedCustomUrl === c.url}
+          onSelect={() => void choose('custom', c.url)}
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void removeCustom(c.url)} aria-label={`Remove ${c.name ?? hostOf(c.url)}`}>
+              <TrashIcon size={14} />
+            </Button>
+          }
+        />
+      ))}
+      <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)' }}>
+        <Button variant="secondary" size="sm" onClick={() => setAddingCustom(true)}>
+          <PlusIcon size={14} />
+          Add public node
+        </Button>
+      </div>
       <NodeSlot icon={<BoltIcon size={18} />} name="Electrum server" detail="Coming soon · SSL" disabled />
       <NodeStatusRow snap={node} onRetry={() => void probeNode()} />
       <TorRow />
       <NetworkRow network={settings?.network} />
       <NetworkFootnote />
       <EditOwnNodeModal open={editing} settings={settings} onClose={() => setEditing(false)} onChanged={applySettings} />
+      <AddCustomNodeModal open={addingCustom} onClose={() => setAddingCustom(false)} onChanged={applySettings} />
     </SectionCard>
+  )
+}
+
+// Add a community public node: an Esplora REST base URL and an optional label.
+// The URL is probed by main before it is saved (reachability + right chain);
+// there is no protocol choice — the wallet speaks Esplora only — and no
+// credentials (auth belongs to the own-node slot).
+function AddCustomNodeModal({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged: (s: NodeSettings) => void }) {
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const close = (): void => {
+    setUrl('')
+    setName('')
+    setError(null)
+    onClose()
+  }
+
+  const submit = async (): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    try {
+      onChanged(await wallet.addCustomNode(url.trim(), name.trim() === '' ? undefined : name.trim()))
+      close()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => {
+        if (!busy) close()
+      }}
+      title="Add a public node"
+      subtitle="A community-hosted Esplora REST endpoint. It is checked before being added and joins the failover list."
+      footer={
+        <>
+          <Button variant="secondary" disabled={busy} onClick={close}>
+            Cancel
+          </Button>
+          <Button disabled={busy || url.trim() === ''} onClick={() => void submit()}>
+            {busy ? 'Checking…' : 'Check & add'}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <TextField label="Node URL" mono value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://node.example.org" aria-label="Public node URL" />
+        <TextField label="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="Community node" aria-label="Node name" />
+        {error !== null && <div className="field-hint field-hint--error">{error}</div>}
+      </div>
+    </Modal>
   )
 }
 

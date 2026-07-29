@@ -130,9 +130,12 @@ export interface SweepOps {
 // live probe of the active endpoint.
 export interface NodeOps {
   get(): NodeSettings | Promise<NodeSettings>
-  select(kind: NodeKind): Promise<NodeSettings>
+  select(kind: NodeKind, url?: string): Promise<NodeSettings>
   setOwn(url: string, user?: string, password?: string): Promise<NodeSettings>
   clearOwn(): Promise<NodeSettings>
+  /** Add (or rename) a user-provided public esplora node; probed before saving. */
+  addCustom(url: string, name?: string): Promise<NodeSettings>
+  removeCustom(url: string): Promise<NodeSettings>
   setTor(enabled: boolean): NodeSettings | Promise<NodeSettings>
   status(): Promise<NodeStatus>
   /** Persist the network profile and relaunch (no-op if already active). */
@@ -284,7 +287,7 @@ export class VaultOrchestrator {
         case 'node.get':
           return ok(await this.deps.node.get())
         case 'node.select':
-          return ok(await this.deps.node.select(request.kind))
+          return ok(await this.deps.node.select(request.kind, request.url))
         case 'node.setOwn':
           return ok(await this.deps.node.setOwn(request.url, request.user, request.password))
         case 'node.clearOwn':
@@ -293,6 +296,10 @@ export class VaultOrchestrator {
           return ok(await this.deps.node.setTor(request.enabled))
         case 'node.status':
           return ok(await this.deps.node.status())
+        case 'node.addCustom':
+          return ok(await this.deps.node.addCustom(request.url, request.name))
+        case 'node.removeCustom':
+          return ok(await this.deps.node.removeCustom(request.url))
         case 'network.set':
           return ok(await this.deps.node.setNetwork(request.network))
         case 'upgrade.info':
