@@ -4,7 +4,7 @@ import { brand } from '../brand'
 import { AddWalletDialog } from '../components/AddWalletDialog'
 import { setAdvancedMode, useAdvancedMode } from '../lib/prefs'
 import { wallet } from '../lib/wallet'
-import { nodeDotColor, nodeSyncPercent, pollNode, probeNode, resetWalletData, setContacts as cacheSetContacts, setWallets, useActiveWallet, useAddressPlaceholder, useContacts, useNodeStatus, useWallets, type NodeStatusSnapshot } from '../lib/walletData'
+import { networkLabel, nodeDotColor, nodeSyncPercent, pollNode, probeNode, resetWalletData, setContacts as cacheSetContacts, setWallets, useActiveWallet, useAddressPlaceholder, useContacts, useNodeStatus, useWallets, type NodeStatusSnapshot } from '../lib/walletData'
 import { BoltIcon, Button, ContactDialog, EyeIcon, GlobeIcon, KeyIcon, Modal, OnionIcon, PasswordField, PasswordStrength, PencilIcon, Pill, PlusIcon, RetryIcon, Screen, Segmented, ServerIcon, ShieldIcon, Switch, TextArea, TextField, TrashIcon, WalletIcon } from '../ui'
 
 // Settings: network status, security (reveal recovery phrase behind a password
@@ -87,7 +87,10 @@ function NetworkCard() {
 
   async function choose(kind: NodeKind, url?: string): Promise<void> {
     if (settings === null) return
-    if (kind === settings.selected && (kind !== 'custom' || url === settings.selectedCustomUrl)) return
+    // Already active? Nothing to do — but for the two multi-node slots that
+    // also means the same node within the slot.
+    const activeUrl = kind === 'custom' ? settings.selectedCustomUrl : kind === 'public' ? settings.selectedPublicUrl : undefined
+    if (kind === settings.selected && (activeUrl === undefined || url === undefined || url === activeUrl)) return
     if (kind === 'own' && settings.ownUrl === undefined) {
       setEditing(true)
       return
@@ -108,9 +111,29 @@ function NetworkCard() {
   }
 
   const selected = settings?.selected ?? 'public'
+  const publicNodes = settings?.publicNodes ?? []
   return (
     <SectionCard title="Network & connection">
-      <NodeSlot icon={<GlobeIcon size={18} />} name="Public node" detail={settings !== null && settings !== undefined ? `${hostOf(settings.publicUrl)} · Esplora REST` : '…'} selected={selected === 'public'} onSelect={() => void choose('public')} />
+      {/* Public nodes shipped with the wallet: pick which one leads, but they
+          are part of the build — no remove action, unlike the added ones. */}
+      {settings === null ? (
+        <NodeSlot icon={<GlobeIcon size={18} />} name="Public node" detail="…" />
+      ) : publicNodes.length === 0 ? (
+        <div style={{ padding: '13px 18px', borderTop: '1px solid var(--border)', fontSize: 12.5, color: 'var(--ink-500)', lineHeight: 1.5 }}>
+          This build ships no public node for {networkLabel(settings.network).toLowerCase()} — add one below, or point the wallet at your own node.
+        </div>
+      ) : (
+        publicNodes.map((p) => (
+          <NodeSlot
+            key={p.url}
+            icon={<GlobeIcon size={18} />}
+            name={p.name}
+            detail={`${hostOf(p.url)} · Esplora REST · ${p.operator}`}
+            selected={selected === 'public' && settings.selectedPublicUrl === p.url}
+            onSelect={() => void choose('public', p.url)}
+          />
+        ))
+      )}
       <NodeSlot
         icon={<ServerIcon size={18} />}
         name="Your own node"

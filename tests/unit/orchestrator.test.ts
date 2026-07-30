@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { VaultOrchestrator, type AddressOps, type ChainOps, type CoinOps, type ContactOps, type MnemonicTools, type NodeOps, type SendOps, type SweepOps, type UpgradeOps, type VaultLike, type WalletOps } from '../../src/main/vault/orchestrator'
-import type { VaultStatus } from '../../src/shared/protocol'
+import type { NodeSettings, VaultStatus } from '../../src/shared/protocol'
 
 const SEED = 'SEED-MUST-NEVER-CROSS-THE-BRIDGE'
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
@@ -108,23 +108,28 @@ const SWEEP: SweepOps = {
   cancel: () => {},
 }
 
+const PUBLIC_NODES = [{ url: 'https://api.example.org', name: 'example.org', operator: 'Example Project' }]
+const nodeSettings = (patch: Partial<NodeSettings> = {}): NodeSettings => ({
+  selected: 'public',
+  publicNodes: PUBLIC_NODES,
+  selectedPublicUrl: PUBLIC_NODES[0].url,
+  network: 'mainnet',
+  customNodes: [],
+  tor: false,
+  hasAuth: false,
+  ...patch,
+})
+
 const NODE: NodeOps = {
-  get: () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
-  select: async (kind) => ({ selected: kind, publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
-  setOwn: async (url, user) => ({ selected: 'own', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], ownUrl: url, tor: false, hasAuth: user !== undefined }),
-  clearOwn: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
-  setTor: (enabled) => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: enabled, hasAuth: false }),
+  get: () => nodeSettings(),
+  select: async (kind) => nodeSettings({ selected: kind }),
+  setOwn: async (url, user) => nodeSettings({ selected: 'own', ownUrl: url, hasAuth: user !== undefined }),
+  clearOwn: async () => nodeSettings(),
+  setTor: (enabled) => nodeSettings({ tor: enabled }),
   status: async () => ({ url: 'https://api.example.org', reachable: true, chain: 'main', blockHeight: 1, syncing: false, latencyMs: 5 }),
   setNetwork: async () => {},
-  addCustom: async (url, name) => ({
-    selected: 'public',
-    publicUrl: 'https://api.example.org',
-    network: 'mainnet',
-    customNodes: [name !== undefined ? { url, name } : { url }],
-    tor: false,
-    hasAuth: false,
-  }),
-  removeCustom: async () => ({ selected: 'public', publicUrl: 'https://api.example.org', network: 'mainnet', customNodes: [], tor: false, hasAuth: false }),
+  addCustom: async (url, name) => nodeSettings({ customNodes: [name !== undefined ? { url, name } : { url }] }),
+  removeCustom: async () => nodeSettings(),
 }
 
 const UPGRADE_OPS: UpgradeOps = {
