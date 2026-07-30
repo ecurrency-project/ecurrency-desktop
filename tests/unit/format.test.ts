@@ -1,4 +1,3 @@
-import { brand } from '../../src/renderer/brand'
 import { describe, expect, it } from 'vitest'
 import { formatNative, formatToken, historyAmount, parseNative, parseToken, tokenLabels } from '../../src/renderer/lib/format'
 
@@ -67,15 +66,18 @@ describe('tokenLabels', () => {
 })
 
 describe('historyAmount', () => {
-  it('formats a native-coin row', () => {
-    expect(historyAmount({ amountAtomic: '123450000' })).toBe(`1.2345 ${brand.assetLabel}`)
+  it('labels a native-coin row with the ticker it is given', () => {
+    // The caller passes the per-network ticker (useAssetLabel); the formatter
+    // itself is brand-free, so testnet rows carry the testnet ticker.
+    expect(historyAmount({ amountAtomic: '123450000' }, 'COIN')).toBe('1.2345 COIN')
+    expect(historyAmount({ amountAtomic: '123450000' }, 'tCOIN')).toBe('1.2345 tCOIN')
   })
 
   it('formats a token row from its movement, not the native side', () => {
-    expect(historyAmount({ tokenId: 'x', tokenAmountAtomic: '15000000', tokenDecimals: 6, tokenTicker: 'USDT', amountAtomic: '0' })).toBe('15 USDT')
+    expect(historyAmount({ tokenId: 'x', tokenAmountAtomic: '15000000', tokenDecimals: 6, tokenTicker: 'USDT', amountAtomic: '0' }, 'COIN')).toBe('15 USDT')
   })
 
   it('falls back to 0 / 6 decimals / "Token" when token fields are missing', () => {
-    expect(historyAmount({ tokenId: 'x', amountAtomic: '0' })).toBe('0 Token')
+    expect(historyAmount({ tokenId: 'x', amountAtomic: '0' }, 'COIN')).toBe('0 Token')
   })
 })

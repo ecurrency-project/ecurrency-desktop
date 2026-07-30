@@ -3,6 +3,7 @@ import type { TokenBalance } from '../../shared/protocol'
 import { brand } from '../brand'
 import { WalletSwitcher } from '../components/WalletSwitcher'
 import { wallet } from '../lib/wallet'
+import { assetLabelFor } from '../brand/labels'
 import { hydrateFromSnapshot, loadWallets, networkLabel, nodeDotColor, refreshAll, useBuildNetwork, useNodeStatus } from '../lib/walletData'
 import { ActivityIcon, AtomIcon, BoltIcon, ChevDownIcon, CoinsIcon, LockIcon, ReceiveIcon, RefreshIcon, SendIcon, SettingsIcon, Sidebar, WalletIcon, type NavItem } from '../ui'
 import { Activity } from './Activity'
@@ -31,16 +32,21 @@ const NAV: NavItem[] = [
 // confirms it for the active wallet (seed + consensus params) — see below.
 const CONVERT_NAV: NavItem = { id: 'convert', label: 'Convert', icon: <BoltIcon /> }
 
-const PAGE_META: Record<Nav, { title: string; subtitle: string }> = {
-  wallet: { title: 'Wallet', subtitle: `Your ${brand.assetName} balance and recent activity` },
-  send: { title: 'Send', subtitle: `Send ${brand.assetLabel} to any address` },
-  receive: { title: 'Receive', subtitle: 'Share your address to get paid' },
-  // The convert subtitle is network-dependent (tBTC on testnet); this static
-  // entry is the pre-resolution fallback, overridden in the component.
-  convert: { title: 'Convert', subtitle: `Turn ${brand.upgrade?.sourceCoinLabel.mainnet ?? 'BTC'} into ${brand.assetLabel}` },
-  activity: { title: 'Activity', subtitle: 'Every transaction on this wallet' },
-  coins: { title: 'Coins', subtitle: 'Manage your unspent outputs (UTXOs)' },
-  settings: { title: 'Settings', subtitle: 'Manage your wallet and security' },
+// Header copy per pane. Two subtitles name coins whose tickers are
+// per-network (tCOIN, tBTC), so this is a function of the build network
+// instead of a constant; mainnet stands in until main reports the network.
+function pageMeta(network: 'mainnet' | 'testnet' | null): Record<Nav, { title: string; subtitle: string }> {
+  const asset = assetLabelFor(network)
+  const source = brand.upgrade?.sourceCoinLabel[network ?? 'mainnet'] ?? 'BTC'
+  return {
+    wallet: { title: 'Wallet', subtitle: `Your ${brand.assetName} balance and recent activity` },
+    send: { title: 'Send', subtitle: `Send ${asset} to any address` },
+    receive: { title: 'Receive', subtitle: 'Share your address to get paid' },
+    convert: { title: 'Convert', subtitle: `Turn ${source} into ${asset}` },
+    activity: { title: 'Activity', subtitle: 'Every transaction on this wallet' },
+    coins: { title: 'Coins', subtitle: 'Manage your unspent outputs (UTXOs)' },
+    settings: { title: 'Settings', subtitle: 'Manage your wallet and security' },
+  }
 }
 
 export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
@@ -178,12 +184,7 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
     </div>
   )
 
-  // The Convert subtitle names the source coin for the ACTIVE network
-  // (e.g. tBTC on testnet); everything else is network-agnostic.
-  const meta =
-    nav === 'convert' && brand.upgrade !== null && buildNet !== null
-      ? { title: 'Convert', subtitle: `Turn ${brand.upgrade.sourceCoinLabel[buildNet]} into ${brand.assetLabel}` }
-      : PAGE_META[nav]
+  const meta = pageMeta(buildNet)[nav]
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>

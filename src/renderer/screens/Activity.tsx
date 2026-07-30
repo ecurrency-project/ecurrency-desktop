@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { HistoryItem } from '../../shared/protocol'
-import { brand } from '../brand'
 import { TxDetailDrawer } from '../components/TxDetailDrawer'
 import { TxLabelLine } from '../components/TxLabelLine'
 import { formatNative, historyAmount, shortHash } from '../lib/format'
-import { loadMoreHistory, resetHistoryPages, useHistory } from '../lib/walletData'
+import { loadMoreHistory, resetHistoryPages, useAssetLabel, useHistory } from '../lib/walletData'
 import { Button, ReceiveIcon, Screen, SendIcon } from '../ui'
 
 // Full transaction history: the wallet's activity grouped by day, with a
@@ -116,6 +115,7 @@ export function Activity() {
 
 function ActivityRow({ tx, onOpen }: { tx: HistoryItem; onOpen: () => void }) {
   const incoming = tx.direction === 'in'
+  const asset = useAssetLabel()
   return (
     <div
       className="activity-row"
@@ -154,11 +154,11 @@ function ActivityRow({ tx, onOpen }: { tx: HistoryItem; onOpen: () => void }) {
       <div style={{ textAlign: 'right', flex: 'none' }}>
         <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: incoming ? 'var(--success)' : 'var(--ink-900)' }}>
           {incoming ? '+' : '−'}
-          {historyAmount(tx)}
+          {historyAmount(tx, asset)}
         </div>
         {/* A token send's native fee isn't part of the token headline — surface it. */}
         {tx.direction === 'out' && tx.tokenId !== undefined && (
-          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--ink-500)', fontFamily: 'var(--mono)' }}>fee {formatNative(tx.feeAtomic)} {brand.assetLabel}</div>
+          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--ink-500)', fontFamily: 'var(--mono)' }}>fee {formatNative(tx.feeAtomic)} {asset}</div>
         )}
         <div style={{ fontSize: 11.5, marginTop: 2, color: tx.confirmed ? 'var(--ink-500)' : 'var(--warning)' }}>{rowTime(tx)}</div>
       </div>

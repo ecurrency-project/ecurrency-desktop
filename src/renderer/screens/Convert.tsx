@@ -4,7 +4,8 @@ import type { UpgradePlanView, UpgradeStatusView } from '../../shared/protocol'
 import { brand } from '../brand'
 import { formatToken } from '../lib/format'
 import { wallet } from '../lib/wallet'
-import { useBuildNetwork } from '../lib/walletData'
+import { assetLabelFor } from '../brand/labels'
+import { useAddressPlaceholder, useBuildNetwork } from '../lib/walletData'
 import { AlertIcon, Button, CheckIcon, CopyIcon, Screen, TextField } from '../ui'
 
 // Convert: the source-chain → native upgrade flow (design:
@@ -36,6 +37,8 @@ export function Convert() {
   // on testnet) so test coins are never presented as the real thing.
   const buildNet = useBuildNetwork()
   const src = up?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'
+  const nativeLabel = assetLabelFor(buildNet)
+  const addressHint = useAddressPlaceholder()
   const [status, setStatus] = useState<UpgradeStatusView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   // BTC-side sync state of the node: synced flag + headers/scanned heights.
@@ -206,8 +209,8 @@ export function Convert() {
             <AlertIcon size={16} />
             <span>
               {btcSync?.synced === false
-                ? `The ${brand.assetLabel} node is still syncing the ${src} chain. You can deposit and convert now, but the network will only credit conversions after that sync completes — expect a delay.`
-                : `The ${brand.assetLabel} node is still scanning ${src} blocks (${String((btcSync?.headers ?? 0) - (btcSync?.scanned ?? 0))} behind). Conversions are credited once the payment's block has been scanned.`}
+                ? `The ${nativeLabel} node is still syncing the ${src} chain. You can deposit and convert now, but the network will only credit conversions after that sync completes — expect a delay.`
+                : `The ${nativeLabel} node is still scanning ${src} blocks (${String((btcSync?.headers ?? 0) - (btcSync?.scanned ?? 0))} behind). Conversions are credited once the payment's block has been scanned.`}
             </span>
           </div>
         )}
@@ -241,7 +244,7 @@ export function Convert() {
         {/* Balance + compose */}
         <section style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>2 · Convert to {brand.assetLabel}</div>
+            <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>2 · Convert to {nativeLabel}</div>
             <span style={{ fontSize: 13, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-700)' }}>
               {fmtSat(confirmedSat)} {src}
             </span>
@@ -286,7 +289,7 @@ export function Convert() {
                 mono
                 value={dest}
                 onChange={(e) => setDest(e.target.value)}
-                placeholder={brand.addressPlaceholder}
+                placeholder={addressHint}
                 aria-label="Destination address"
               />
               <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: 'var(--well)', border: '1px solid var(--border)' }}>
@@ -294,7 +297,7 @@ export function Convert() {
                   <AlertIcon size={15} />
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>
-                  Conversion is one-way and cannot be undone. The {brand.assetLabel} amount follows the protocol rate at
+                  Conversion is one-way and cannot be undone. The {nativeLabel} amount follows the protocol rate at
                   credit time (≈1% protocol fee applies) and arrives after ~3–4 hours.
                 </span>
               </div>
@@ -339,7 +342,7 @@ export function Convert() {
               </div>
               <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-700)', wordBreak: 'break-all' }}>{txid}</code>
               <div style={{ fontSize: 12.5, color: 'var(--ink-500)', lineHeight: 1.5 }}>
-                {brand.assetLabel} will appear on your address after the {src} transaction has 6 confirmations plus a
+                {nativeLabel} will appear on your address after the {src} transaction has 6 confirmations plus a
                 ~2 hour protocol delay (typically ~3 hours in total). Track it below. The deposit address in step 1 is
                 already up to date for your next conversion.
               </div>

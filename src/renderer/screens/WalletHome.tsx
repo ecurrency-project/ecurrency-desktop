@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import type { HistoryItem, TokenBalance } from '../../shared/protocol'
-import { brand } from '../brand'
 import { TxDetailDrawer } from '../components/TxDetailDrawer'
 import { TxLabelLine } from '../components/TxLabelLine'
 import { formatNative, formatToken, historyAmount, shortHash } from '../lib/format'
-import { useHistory, useSummary, useTokens } from '../lib/walletData'
+import { useAssetLabel, useHistory, useSummary, useTokens } from '../lib/walletData'
 import { AtomIcon, Button, ChevRightIcon, ReceiveIcon, Screen, SendIcon, TokenGlyph } from '../ui'
 
 // Unlocked dashboard: a balance hero + quick actions + recent activity, matching
@@ -16,6 +15,7 @@ export function WalletHome({ onSend, onReceive, onSeeAll, onSendToken }: { onSen
   const history = historyData?.items
   const { data: tokens } = useTokens()
   const [openTx, setOpenTx] = useState<HistoryItem | null>(null)
+  const asset = useAssetLabel()
 
   return (
     <Screen>
@@ -31,7 +31,7 @@ export function WalletHome({ onSend, onReceive, onSeeAll, onSendToken }: { onSen
                     <span style={{ fontFamily: 'var(--display-font)', fontSize: 42, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--ink-900)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                       {formatNative(summary.balanceAtomic)}
                     </span>
-                    <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink-500)' }}>{brand.assetLabel}</span>
+                    <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink-500)' }}>{asset}</span>
                   </>
                 ) : (
                   <span style={{ fontSize: 42, fontWeight: 600, color: 'var(--ink-500)', lineHeight: 1 }}>{loading ? '…' : '—'}</span>
@@ -109,6 +109,7 @@ function Note({ children }: { children: string }) {
 
 function ActivityRow({ tx, onOpen }: { tx: HistoryItem; onOpen: () => void }) {
   const incoming = tx.direction === 'in'
+  const asset = useAssetLabel()
   return (
     <div
       className="activity-row"
@@ -152,11 +153,11 @@ function ActivityRow({ tx, onOpen }: { tx: HistoryItem; onOpen: () => void }) {
       <div style={{ textAlign: 'right', flex: 'none' }}>
         <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: incoming ? 'var(--success)' : 'var(--ink-900)' }}>
           {incoming ? '+' : '−'}
-          {historyAmount(tx)}
+          {historyAmount(tx, asset)}
         </div>
         {/* A token send's native fee isn't part of the token headline — surface it. */}
         {tx.direction === 'out' && tx.tokenId !== undefined && (
-          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--ink-500)', fontFamily: 'var(--mono)' }}>fee {formatNative(tx.feeAtomic)} {brand.assetLabel}</div>
+          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--ink-500)', fontFamily: 'var(--mono)' }}>fee {formatNative(tx.feeAtomic)} {asset}</div>
         )}
       </div>
     </div>

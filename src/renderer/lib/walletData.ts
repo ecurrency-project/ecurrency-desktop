@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import type { Contact, HistoryItem, HistoryPage, NodeStatus, TokenBalance, TxDetail, UtxoView, WalletInfo, WalletSnapshot, WalletSummary } from '../../shared/protocol'
+import { addressPlaceholderFor, assetLabelFor } from '../brand/labels'
 import { wallet } from './wallet'
 
 // Stale-while-revalidate cache for the wallet's read models. Screens read through
@@ -215,6 +216,21 @@ export function useBuildNetwork(): 'mainnet' | 'testnet' | null {
 /** Display label for a network ('…' while unknown). */
 export function networkLabel(network: 'mainnet' | 'testnet' | null): string {
   return network === 'mainnet' ? 'Mainnet' : network === 'testnet' ? 'Testnet' : '…'
+}
+
+// ─── Per-network brand strings ───────────────────────────────────────
+// The ticker and the address hint depend on which chain this build runs on;
+// these hooks re-render with the right value once main reports the network
+// (see brand/labels for the pure readers and the mainnet fallback).
+
+/** The build's ticker for native amounts, e.g. "QBT" / "tQBT". */
+export function useAssetLabel(): string {
+  return assetLabelFor(useBuildNetwork())
+}
+
+/** Placeholder for address inputs, e.g. "bq… or 3u…". */
+export function useAddressPlaceholder(): string {
+  return addressPlaceholderFor(useBuildNetwork())
 }
 
 // Mainnet keeps the historical key (shipped installs must not lose their

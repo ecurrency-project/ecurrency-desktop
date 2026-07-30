@@ -4,7 +4,8 @@ import { brand } from '../brand'
 import { formatNative, formatToken, historyAmount, shortHash, tokenLabels } from '../lib/format'
 import { useAdvancedMode } from '../lib/prefs'
 import { disassembleScript } from '../lib/script'
-import { loadTxDetail, loadTxRaw, saveTxLabel, useBuildNetwork, useTokens } from '../lib/walletData'
+import { assetLabelFor } from '../brand/labels'
+import { loadTxDetail, loadTxRaw, saveTxLabel, useAssetLabel, useBuildNetwork, useTokens } from '../lib/walletData'
 import { ChevDownIcon, CloseIcon, CopyIcon, ExternalIcon, PencilIcon } from '../ui'
 
 // Block explorer the "Explorer" button opens (brand-configured; hidden when the
@@ -21,8 +22,10 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
   const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
   const advanced = useAdvancedMode()
-  // For labelling upgrade-coinbase provenance with the right source ticker.
+  // For labelling amounts and upgrade-coinbase provenance with the right
+  // tickers (both are per-network).
   const buildNet = useBuildNetwork()
+  const asset = assetLabelFor(buildNet)
   const { data: tokensData } = useTokens()
   const tokenById = useMemo(() => new Map((tokensData ?? []).map((t) => [t.id, t] as const)), [tokensData])
 
@@ -58,7 +61,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
       const t = tokenById.get(e.tokenId)
       return `${formatToken(e.tokenAmountAtomic ?? '0', t?.decimals ?? 6)} ${t !== undefined ? tokenLabels(t).ticker : 'Token'}`
     }
-    return `${formatNative(e.amountAtomic)} ${brand.assetLabel}`
+    return `${formatNative(e.amountAtomic)} ${asset}`
   }
 
   function copyTxid(): void {
@@ -98,7 +101,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
             <div style={{ fontSize: 13, color: 'var(--ink-500)', fontWeight: 500 }}>{incoming ? 'Received' : 'Sent'}</div>
             <div style={{ fontSize: 30, fontWeight: 600, fontFamily: 'var(--display-font)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: amountColor, marginTop: 4 }}>
               {incoming ? '+' : '−'}
-              {historyAmount(tx)}
+              {historyAmount(tx, asset)}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: tx.confirmed ? 'var(--success)' : 'var(--warning)' }} />
@@ -156,14 +159,14 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
             ) : (
               <>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <FlowChip label="Total in" value={`${formatNative(detail.totalInAtomic)} ${brand.assetLabel}`} />
-                  <FlowChip label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${brand.assetLabel}`} />
-                  <FlowChip label="Fee" value={`${formatNative(detail.feeAtomic)} ${brand.assetLabel}`} />
+                  <FlowChip label="Total in" value={`${formatNative(detail.totalInAtomic)} ${asset}`} />
+                  <FlowChip label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${asset}`} />
+                  <FlowChip label="Fee" value={`${formatNative(detail.feeAtomic)} ${asset}`} />
                 </div>
                 <IoList title="Inputs" entries={detail.inputs} sumAtomic={detail.totalInAtomic} incoming={incoming} ioText={ioText} kind="in" advanced={advanced} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 2px' }}>
                   <span style={{ height: 1, flex: 1, background: 'var(--border)' }} />
-                  <span style={{ fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>fee {formatNative(detail.feeAtomic)} {brand.assetLabel}</span>
+                  <span style={{ fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>fee {formatNative(detail.feeAtomic)} {asset}</span>
                   <span style={{ height: 1, flex: 1, background: 'var(--border)' }} />
                 </div>
                 <IoList title="Outputs" entries={detail.outputs} sumAtomic={detail.totalOutAtomic} incoming={incoming} ioText={ioText} kind="out" advanced={advanced} />
@@ -174,9 +177,9 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
           {/* Summary */}
           {detail !== null && (
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-              <SummaryRow label="Total in" value={`${formatNative(detail.totalInAtomic)} ${brand.assetLabel}`} first />
-              <SummaryRow label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${brand.assetLabel}`} />
-              <SummaryRow label="Fee" value={`${formatNative(detail.feeAtomic)} ${brand.assetLabel}`} />
+              <SummaryRow label="Total in" value={`${formatNative(detail.totalInAtomic)} ${asset}`} first />
+              <SummaryRow label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${asset}`} />
+              <SummaryRow label="Fee" value={`${formatNative(detail.feeAtomic)} ${asset}`} />
               <SummaryRow label="Size" value={`${String(detail.sizeBytes)} bytes`} />
               <SummaryRow label="Txid" value={shortHash(tx.txid)} copy={tx.txid} mono />
             </div>
@@ -266,6 +269,7 @@ function IoList({
   kind: 'in' | 'out'
   advanced: boolean
 }) {
+  const asset = useAssetLabel()
   // Long input/output lists (some transactions consolidate dozens of UTXOs) collapse to
   // the first few, with a toggle to reveal the rest — so the drawer stays scannable.
   const COLLAPSE_AT = 5
@@ -277,7 +281,7 @@ function IoList({
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-700)' }}>
           {title} ({entries.length})
         </span>
-        <span style={{ fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(sumAtomic)} {brand.assetLabel}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(sumAtomic)} {asset}</span>
       </div>
       {shown.map((e, i) => (
         <div key={`${e.address ?? 'na'}:${String(i)}`} style={{ borderTop: '1px solid var(--border)' }}>
