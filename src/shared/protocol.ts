@@ -377,11 +377,24 @@ export interface CustomNodeView {
   readonly name?: string
 }
 
+/** A public endpoint this BUILD ships for its network. Part of the wallet, so
+ *  the user can pick which one leads but cannot remove it. */
+export interface PublicNodeView {
+  readonly url: string
+  readonly name: string
+  readonly operator: string
+}
+
 // The node-selection settings the Network card renders: which slot is active, the
-// public node's URL (for display), the user's own-node URL if set, and the Tor flag.
+// bundled public nodes, the user's own-node URL if set, and the Tor flag.
 export interface NodeSettings {
   readonly selected: NodeKind
-  readonly publicUrl: string
+  /** Bundled public nodes for this network, in brand order. May be empty —
+   *  a brand ships none while its network is unlaunched. */
+  readonly publicNodes: readonly PublicNodeView[]
+  /** Which bundled node leads when `selected === 'public'`; absent means the
+   *  first of `publicNodes`. */
+  readonly selectedPublicUrl?: string
   readonly ownUrl?: string
   /** User-added public nodes (see CustomNodeView). */
   readonly customNodes: readonly CustomNodeView[]
@@ -530,7 +543,8 @@ export interface WalletApi {
   exportWatchDescriptor(): Promise<string>
   /** Current node-selection settings (slots + Tor flag). */
   getNode(): Promise<NodeSettings>
-  /** Activate a node slot (public/own); rebuilds the session. Returns updated settings. */
+  /** Activate a node slot; rebuilds the session. `url` picks which node leads
+   *  for the 'public' and 'custom' slots. Returns updated settings. */
   selectNode(kind: NodeKind, url?: string): Promise<NodeSettings>
   /** Set the user's own-node URL with optional Basic-auth (probes it first); activates it. Returns updated settings. */
   setOwnNode(url: string, user?: string, password?: string): Promise<NodeSettings>

@@ -193,3 +193,62 @@ describe('NodeConfigStore — custom public nodes', () => {
     expect(new NodeConfigStore(path).getSettings().selected).toBe('public')
   })
 })
+
+// Which BUNDLED node leads, for a brand that ships more than one. The store is
+// told the build's endpoint URLs so it can validate the pick — and forget one
+// that a later release dropped from the list.
+describe('NodeConfigStore — bundled public nodes', () => {
+  const file = (): string => join(mkdtempSync(join(tmpdir(), 'nodecfg-pub-')), 'node.json')
+  const BUNDLED = ['https://a.example', 'https://b.example']
+
+  it('persists the picked bundled node', () => {
+    const path = file()
+    new NodeConfigStore(path, BUNDLED).setSelected('public', 'https://b.example')
+    const s = new NodeConfigStore(path, BUNDLED).getSettings()
+    expect(s.selected).toBe('public')
+    expect(s.selectedPublicUrl).toBe('https://b.example')
+  })
+
+  it('refuses to pick a node this build does not bundle', () => {
+    const store = new NodeConfigStore(file(), BUNDLED)
+    expect(() => store.setSelected('public', 'https://ghost.example')).toThrow(/not in the list/)
+  })
+
+  it('selecting the slot without a URL means "the first one"', () => {
+    const path = file()
+    const store = new NodeConfigStore(path, BUNDLED)
+    store.setSelected('public')
+    expect(store.getSettings().selectedPublicUrl).toBeUndefined()
+  })
+
+  it('forgets a pick the build no longer bundles', () => {
+    const path = file()
+    new NodeConfigStore(path, BUNDLED).setSelected('public', 'https://b.example')
+    // A release drops b.example from DEFAULT_NODES.
+    const s = new NodeConfigStore(path, ['https://a.example']).getSettings()
+    expect(s.selected).toBe('public')
+    expect(s.selectedPublicUrl).toBeUndefined()
+  })
+
+  it('keeps the pick as a memo while another slot is active', () => {
+    const path = file()
+    const store = new NodeConfigStore(path, BUNDLED)
+    store.setSelected('public', 'https://b.example')
+    store.setOwnUrl('http://127.0.0.1:9668')
+    store.setSelected('own')
+    const s = new NodeConfigStore(path, BUNDLED).getSettings()
+    expect(s.selected).toBe('own')
+    expect(s.selectedPublicUrl).toBe('https://b.example')
+  })
+
+  it('survives alongside a custom-node pick', () => {
+    const path = file()
+    const store = new NodeConfigStore(path, BUNDLED)
+    store.addCustomNode('https://c.example')
+    store.setSelected('public', 'https://b.example')
+    store.setSelected('custom', 'https://c.example')
+    const s = new NodeConfigStore(path, BUNDLED).getSettings()
+    expect(s.selectedCustomUrl).toBe('https://c.example')
+    expect(s.selectedPublicUrl).toBe('https://b.example')
+  })
+})

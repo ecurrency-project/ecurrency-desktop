@@ -24,6 +24,9 @@ export interface CustomNodeStored {
 
 export interface NodeSettingsStored {
   readonly selected: StoredNodeKind
+  /** Which bundled node is primary when `selected === 'public'`; absent means
+   *  "the first one" (the brand may ship several, or none at all). */
+  readonly selectedPublicUrl?: string
   /** Which custom node is active when `selected === 'custom'`. */
   readonly selectedCustomUrl?: string
   readonly ownUrl?: string
@@ -34,6 +37,7 @@ export interface NodeSettingsStored {
 interface NodeConfigFile {
   readonly version: number
   readonly selected: StoredNodeKind
+  readonly selectedPublicUrl?: string
   readonly selectedCustomUrl?: string
   readonly ownUrl?: string
   readonly tor: boolean
@@ -45,31 +49,52 @@ const NODE_CONFIG_VERSION = 1
 export class NodeConfigStore {
   private data: NodeConfigFile
 
-  constructor(private readonly file: string) {
+  /**
+   * @param file        path of the plain JSON config
+   * @param publicUrls  URLs of the endpoints this BUILD bundles for its network
+   *                    (from DEFAULT_NODES). The store validates the primary
+   *                    pick against them and forgets a pick that a release has
+   *                    since dropped from the list.
+   */
+  constructor(
+    private readonly file: string,
+    private readonly publicUrls: readonly string[] = [],
+  ) {
     this.data = this.read()
   }
 
   getSettings(): NodeSettingsStored {
-    const s: { selected: StoredNodeKind; selectedCustomUrl?: string; ownUrl?: string; tor: boolean; customNodes: readonly CustomNodeStored[] } = {
+    const s: { selected: StoredNodeKind; selectedPublicUrl?: string; selectedCustomUrl?: string; ownUrl?: string; tor: boolean; customNodes: readonly CustomNodeStored[] } = {
       selected: this.data.selected,
       tor: this.data.tor,
       customNodes: this.data.customNodes,
     }
+    if (this.data.selectedPublicUrl !== undefined) s.selectedPublicUrl = this.data.selectedPublicUrl
     if (this.data.selectedCustomUrl !== undefined) s.selectedCustomUrl = this.data.selectedCustomUrl
     if (this.data.ownUrl !== undefined) s.ownUrl = this.data.ownUrl
     return s
   }
 
-  /** Activate a slot. Selecting 'custom' requires the URL of a stored custom node. */
-  setSelected(kind: StoredNodeKind, customUrl?: string): void {
+  /**
+   * Activate a slot. 'custom' requires the URL of a stored custom node;
+   * 'public' takes the URL of a bundled node, or none to mean "the first one"
+   * (which is also what a build that bundles a single node always resolves to).
+   */
+  setSelected(kind: StoredNodeKind, url?: string): void {
     if (kind === 'custom') {
-      if (customUrl === undefined || !this.data.customNodes.some((c) => c.url === customUrl)) {
+      if (url === undefined || !this.data.customNodes.some((c) => c.url === url)) {
         throw new Error('That node is not in the list.')
       }
-      this.persist({ ...this.data, selected: 'custom', selectedCustomUrl: customUrl })
+      this.persist({ ...this.data, selected: 'custom', selectedCustomUrl: url })
       return
     }
-    // Leaving 'custom' keeps selectedCustomUrl around as a harmless memo.
+    if (kind === 'public' && url !== undefined) {
+      if (!this.publicUrls.includes(url)) throw new Error('That node is not in the list.')
+      this.persist({ ...this.data, selected: 'public', selectedPublicUrl: url })
+      return
+    }
+    // Leaving a slot keeps its memo around, harmlessly: coming back to
+    // 'public' or 'custom' restores the node the user had picked there.
     this.persist({ ...this.data, selected: kind })
   }
 
@@ -120,6 +145,7 @@ export class NodeConfigStore {
     try {
       const p = JSON.parse(readFileSync(this.file, 'utf8')) as {
         selected?: unknown
+        selectedPublicUrl?: unknown
         selectedCustomUrl?: unknown
         ownUrl?: unknown
         tor?: unknown
@@ -140,6 +166,13 @@ export class NodeConfigStore {
         typeof p.selectedCustomUrl === 'string' && customNodes.some((c) => c.url === p.selectedCustomUrl)
           ? p.selectedCustomUrl
           : undefined
+      // A primary pick that this build no longer bundles (the brand's node list
+      // changed in a release) is forgotten, not honoured: the pool would drop
+      // the URL anyway, and "first bundled node" is the right answer then.
+      const selectedPublicUrl =
+        typeof p.selectedPublicUrl === 'string' && this.publicUrls.includes(p.selectedPublicUrl)
+          ? p.selectedPublicUrl
+          : undefined
       // Each slot only makes sense with its target present; otherwise fall
       // back to the bundled public node.
       const selected: StoredNodeKind =
@@ -152,6 +185,7 @@ export class NodeConfigStore {
       return {
         ...base,
         ...(ownUrl !== undefined ? { ownUrl } : {}),
+        ...(selectedPublicUrl !== undefined ? { selectedPublicUrl } : {}),
         ...(selectedCustomUrl !== undefined ? { selectedCustomUrl } : {}),
       }
     } catch {
