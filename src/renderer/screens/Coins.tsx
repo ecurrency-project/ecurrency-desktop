@@ -1,9 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import type { UtxoView } from '../../shared/protocol'
-import { brand } from '../brand'
 import { formatNative, formatToken, tokenLabels } from '../lib/format'
 import { wallet } from '../lib/wallet'
-import { invalidate, mutateCoins, useCoins, useTokens } from '../lib/walletData'
+import { invalidate, mutateCoins, useAssetLabel, useCoins, useTokens } from '../lib/walletData'
 import { Button, CheckIcon, PencilIcon, Pill, Screen, SearchIcon, SendIcon, SnowIcon } from '../ui'
 
 type Filter = 'all' | 'spendable' | 'frozen' | 'tokens'
@@ -30,6 +29,7 @@ export function Coins({ onSendSelected }: { onSendSelected: (outpoints: string[]
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
+  const asset = useAssetLabel()
 
   // Optimistic edit of the shared coin list; on a failed write we reload the
   // truth from the node (invalidate), which also reverts the optimistic change.
@@ -156,7 +156,7 @@ export function Coins({ onSendSelected }: { onSendSelected: (outpoints: string[]
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '56px 20px', color: 'var(--ink-500)' }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-700)' }}>No coins yet</div>
-              <div style={{ fontSize: 13, marginTop: 6 }}>Nothing matches this filter. Receive {brand.assetLabel} to create your first UTXO.</div>
+              <div style={{ fontSize: 13, marginTop: 6 }}>Nothing matches this filter. Receive {asset} to create your first UTXO.</div>
             </div>
           ) : (
             filtered.map((coin) => {
@@ -184,7 +184,7 @@ export function Coins({ onSendSelected }: { onSendSelected: (outpoints: string[]
             <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 14, padding: '10px 12px 10px 18px', borderRadius: 14, background: 'var(--card-el)', border: '1px solid var(--border-s)', boxShadow: 'var(--shadow)' }}>
               <div style={{ fontSize: 13, color: 'var(--ink-700)', whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 600, color: 'var(--ink-900)' }}>{selected.size} selected</span> ·{' '}
-                <span style={{ fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums' }}>{formatNative(selectedTotal.toString())} {brand.assetLabel}</span>
+                <span style={{ fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums' }}>{formatNative(selectedTotal.toString())} {asset}</span>
               </div>
               <div style={{ width: 1, height: 22, background: 'var(--border)' }} />
               <Button size="sm" onClick={() => onSendSelected([...selected])}>
@@ -208,6 +208,7 @@ export function Coins({ onSendSelected }: { onSendSelected: (outpoints: string[]
 
 function StatCard({ label, value, unit = false, minWidth, tone, icon }: { label: string; value: string; unit?: boolean; minWidth: number; tone?: 'frozen'; icon?: ReactNode }) {
   const valueColor = tone === 'frozen' ? 'var(--frozen)' : 'var(--ink-900)'
+  const asset = useAssetLabel()
   return (
     <div style={{ flex: 1, minWidth, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '15px 18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-500)', fontWeight: 500 }}>
@@ -216,7 +217,7 @@ function StatCard({ label, value, unit = false, minWidth, tone, icon }: { label:
       </div>
       <div style={{ fontSize: 21, fontWeight: 600, fontFamily: 'var(--display-font)', fontVariantNumeric: 'tabular-nums', color: valueColor, marginTop: 5 }}>
         {value}
-        {unit && <span style={{ fontSize: 13, color: 'var(--ink-500)', fontWeight: 600 }}> {brand.assetLabel}</span>}
+        {unit && <span style={{ fontSize: 13, color: 'var(--ink-500)', fontWeight: 600 }}> {asset}</span>}
       </div>
     </div>
   )
@@ -238,6 +239,7 @@ function CoinRow({
   onToggleFreeze: () => void
 }) {
   const [editing, setEditing] = useState(false)
+  const asset = useAssetLabel()
   const pq = coin.algo === 'falcon512'
   const primary = coin.label ?? coin.address
   // Token UTXOs aren't selectable for coin-control (which builds a native send); they
@@ -296,7 +298,7 @@ function CoinRow({
 
       <div style={{ textAlign: 'right', flex: 'none' }}>
         <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>
-          {tokenAsset !== undefined ? `${formatToken(coin.tokenAmountAtomic ?? '0', tokenAsset.decimals)} ${tokenAsset.ticker}` : `${formatNative(coin.valueAtomic)} ${brand.assetLabel}`}
+          {tokenAsset !== undefined ? `${formatToken(coin.tokenAmountAtomic ?? '0', tokenAsset.decimals)} ${tokenAsset.ticker}` : `${formatNative(coin.valueAtomic)} ${asset}`}
         </div>
         <div style={{ fontSize: 11.5, marginTop: 2, color: coin.confirmations > 0 ? 'var(--ink-500)' : 'var(--warning)' }}>{coin.confirmations > 0 ? `${String(coin.confirmations)} conf` : 'Pending'}</div>
       </div>

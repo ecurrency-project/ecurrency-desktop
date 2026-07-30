@@ -1,10 +1,9 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { SendPreview, TokenBalance, TokenSendPreview } from '../../shared/protocol'
-import { brand } from '../brand'
 import { formatNative, formatToken, parseNative, parseToken, tokenLabels } from '../lib/format'
 import { wallet } from '../lib/wallet'
 import { coinSelectionShort, isInsufficientFundsError } from '../lib/sendValidation'
-import { invalidate, setContacts as cacheSetContacts, useActiveWallet, useCoins, useContacts, useTokens } from '../lib/walletData'
+import { invalidate, setContacts as cacheSetContacts, useActiveWallet, useAddressPlaceholder, useAssetLabel, useCoins, useContacts, useTokens } from '../lib/walletData'
 import { AlertIcon, Button, CheckIcon, ChevDownIcon, ChevRightIcon, CoinsIcon, ContactDialog, ContactIcon, CopyIcon, EyeIcon, Pill, PlusIcon, Screen } from '../ui'
 
 // Send flow: form → review (built + held in main) → sending (sign + broadcast) →
@@ -45,14 +44,17 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
   const activeWallet = useActiveWallet()
   const contacts = contactsData ?? []
   const tokens = tokensData ?? []
+  // Per-network brand strings: the native ticker and the address hint.
+  const nativeLabel = useAssetLabel()
+  const addressHint = useAddressPlaceholder()
 
-  const assetSym = asset !== null ? tokenLabels(asset).ticker : brand.assetLabel
+  const assetSym = asset !== null ? tokenLabels(asset).ticker : nativeLabel
   const decimals = asset !== null ? asset.decimals : 8
   const parseAmount = (s: string): bigint => (asset !== null ? parseToken(s, asset.decimals) : parseNative(s))
   // "Available": for the native coin, the spendable (unfrozen) balance — matching the Coins
   // screen's "Spendable"; for a token, its full balance (the fee is a separate native amount).
   const nativeAvailable = coinsData !== undefined ? coinsData.filter((c) => !c.frozen).reduce((sum, c) => sum + BigInt(c.valueAtomic), 0n).toString() : null
-  const availableLabel = asset !== null ? `${formatToken(asset.amountAtomic, decimals)} ${assetSym}` : nativeAvailable !== null ? `${formatNative(nativeAvailable)} ${brand.assetLabel}` : null
+  const availableLabel = asset !== null ? `${formatToken(asset.amountAtomic, decimals)} ${assetSym}` : nativeAvailable !== null ? `${formatNative(nativeAvailable)} ${nativeLabel}` : null
 
   // Switching asset starts a fresh compose — clear the amount, fee and any errors.
   function switchAsset(next: TokenBalance | null): void {
@@ -276,7 +278,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
           </span>
           <div style={{ fontSize: 18, fontWeight: 600, fontFamily: 'var(--display-font)', color: 'var(--ink-900)' }}>Watch-only wallet</div>
           <div style={{ fontSize: 13.5, color: 'var(--ink-500)', lineHeight: 1.5 }}>
-            “{activeWallet.label}” has no keys, so it can’t send. Switch to a wallet that can sign to send {brand.assetLabel} or tokens.
+            “{activeWallet.label}” has no keys, so it can’t send. Switch to a wallet that can sign to send {nativeLabel} or tokens.
           </div>
         </div>
       </Screen>
@@ -306,7 +308,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                 className="field field--mono"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder={`${brand.addressPlaceholder} address or contact`}
+                placeholder={`Address or contact (${addressHint})`}
                 aria-label="Recipient address"
               />
               {/* Click-away layer: a dropdown must close when the user clicks
@@ -434,13 +436,13 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                     const isActive = (a?.id ?? null) === (asset?.id ?? null)
                     return (
                       <button
-                        key={a?.id ?? brand.assetLabel}
+                        key={a?.id ?? nativeLabel}
                         type="button"
                         className="picker-row"
                         onClick={() => switchAsset(a)}
                         style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '9px 11px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--ink-900)' }}
                       >
-                        <span style={{ flex: 1 }}>{a === null ? brand.assetLabel : tokenLabels(a).ticker}</span>
+                        <span style={{ flex: 1 }}>{a === null ? nativeLabel : tokenLabels(a).ticker}</span>
                         {isActive && (
                           <span style={{ display: 'flex', color: 'var(--primary)' }}>
                             <CheckIcon size={15} />
@@ -457,12 +459,12 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, background: 'var(--well)' }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-900)' }}>
-                  Network fee{asset !== null && <span style={{ fontWeight: 500, color: 'var(--ink-500)' }}> · paid in {brand.assetLabel}</span>}
+                  Network fee{asset !== null && <span style={{ fontWeight: 500, color: 'var(--ink-500)' }}> · paid in {nativeLabel}</span>}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 1 }}>Confirms in ~10s</div>
               </div>
               <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--mono)', color: 'var(--ink-700)' }}>
-                {feeLoading ? '…' : formFee !== null ? `${formatNative(formFee)} ${brand.assetLabel}` : '—'}
+                {feeLoading ? '…' : formFee !== null ? `${formatNative(formFee)} ${nativeLabel}` : '—'}
               </div>
             </div>
 
@@ -472,7 +474,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                   <AlertIcon size={16} />
                 </span>
                 <div style={{ fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.45 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--ink-900)' }}>You need a little {brand.assetLabel} to pay the network fee.</span> Add {brand.assetLabel} to send tokens.
+                  <span style={{ fontWeight: 600, color: 'var(--ink-900)' }}>You need a little {nativeLabel} to pay the network fee.</span> Add {nativeLabel} to send tokens.
                 </div>
               </div>
             )}
@@ -534,7 +536,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.address}</div>
                           </div>
-                          <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(c.valueAtomic)} {brand.assetLabel}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(c.valueAtomic)} {nativeLabel}</div>
                         </button>
                       )
                     })}
@@ -543,7 +545,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                         Selected {formatNative(pickedAtomic.toString())}
                         {/* Exact need once the fee is known; before that be honest that the
                            fee comes on top instead of pretending need == amount. */}
-                        {needAtomic !== null ? ` / need ${formatNative(needAtomic.toString())}` : amountParsed !== null ? ` / need ${formatNative(amountParsed.toString())} + fee` : ''} {brand.assetLabel}
+                        {needAtomic !== null ? ` / need ${formatNative(needAtomic.toString())}` : amountParsed !== null ? ` / need ${formatNative(amountParsed.toString())} + fee` : ''} {nativeLabel}
                       </div>
                     )}
                     {coinShort && (
@@ -591,14 +593,14 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
               {tokenPreview !== null ? (
                 <>
                   <ReviewRow label="Amount" value={`${formatToken(tokenPreview.tokenAmountAtomic, decimals)} ${assetSym}`} strong />
-                  <ReviewRow label="Network fee" value={`${formatNative(tokenPreview.feeAtomic)} ${brand.assetLabel}`} />
+                  <ReviewRow label="Network fee" value={`${formatNative(tokenPreview.feeAtomic)} ${nativeLabel}`} />
                   <ReviewRow label="Signature" value={tokenPreview.signature} />
                 </>
               ) : preview !== null ? (
                 <>
-                  <ReviewRow label="Amount" value={`${formatNative(preview.amountAtomic)} ${brand.assetLabel}`} />
-                  <ReviewRow label="Network fee" value={`${formatNative(preview.feeAtomic)} ${brand.assetLabel}`} />
-                  <ReviewRow label="Total" value={`${formatNative(preview.totalAtomic)} ${brand.assetLabel}`} strong />
+                  <ReviewRow label="Amount" value={`${formatNative(preview.amountAtomic)} ${nativeLabel}`} />
+                  <ReviewRow label="Network fee" value={`${formatNative(preview.feeAtomic)} ${nativeLabel}`} />
+                  <ReviewRow label="Total" value={`${formatNative(preview.totalAtomic)} ${nativeLabel}`} strong />
                   <ReviewRow label="Signature" value={preview.signature} />
                 </>
               ) : null}
@@ -642,7 +644,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                 {formatToken(tokenPreview.tokenAmountAtomic, decimals)} {assetSym}
               </div>
             ) : preview !== null ? (
-              <div style={{ marginTop: 8, fontSize: 24, fontWeight: 600, fontFamily: 'var(--display-font)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(preview.amountAtomic)} {brand.assetLabel}</div>
+              <div style={{ marginTop: 8, fontSize: 24, fontWeight: 600, fontFamily: 'var(--display-font)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(preview.amountAtomic)} {nativeLabel}</div>
             ) : null}
             <div style={{ marginTop: 18, width: '100%', background: 'var(--well)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', textAlign: 'left' }}>
               <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>Transaction ID</div>
@@ -694,6 +696,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
         <ContactDialog
           open={contactOpen}
           onClose={() => setContactOpen(false)}
+          addressPlaceholder={addressHint}
           initialAddress={recipient.trim()}
           onSubmit={async (name, address) => {
             const updated = await wallet.addContact(name, address)

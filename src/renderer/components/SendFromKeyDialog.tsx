@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { AddressAlgo, KeyInspection, SendPreview } from '../../shared/protocol'
-import { brand } from '../brand'
 import { formatNative, parseNative } from '../lib/format'
 import { wallet } from '../lib/wallet'
+import { useAssetLabel } from '../lib/walletData'
 import { AlertIcon, AtomIcon, Button, Modal, Pill, Segmented, TextArea, TextField } from '../ui'
 
 // "Send from a key" — the one-dialog quick path: paste a WIF, see its balance,
@@ -20,6 +20,7 @@ type Step = 'key' | 'form' | 'review' | 'done'
 const ALGO_LABEL: Record<AddressAlgo, string> = { ecdsa: 'ECDSA', schnorr: 'Schnorr', falcon512: 'Falcon-512' }
 
 export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const asset = useAssetLabel()
   const [step, setStep] = useState<Step>('key')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -226,7 +227,7 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
             <div style={{ background: 'var(--well)', border: '1px solid var(--border)', borderRadius: 12, padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>Balance on this key</span>
-                <span style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(scanned.balanceAtomic)} {brand.assetLabel}</span>
+                <span style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>{formatNative(scanned.balanceAtomic)} {asset}</span>
               </div>
               <code style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-500)', wordBreak: 'break-all' }}>{scanned.address}</code>
             </div>
@@ -235,7 +236,7 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
                 <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
                   <AlertIcon size={15} />
                 </span>
-                <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>Nothing to send — this key holds no spendable {brand.assetLabel}. Close to finish; the key will be wiped from memory.</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>Nothing to send — this key holds no spendable {asset}. Close to finish; the key will be wiped from memory.</span>
               </div>
             ) : (
               <>
@@ -243,7 +244,7 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                   <div style={{ flex: 1 }}>
                     <TextField
-                      label={`Amount (${brand.assetLabel})`}
+                      label={`Amount (${asset})`}
                       mono
                       value={sendMax ? '' : amount}
                       disabled={sendMax}
@@ -252,7 +253,7 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
                         setSendMax(false)
                       }}
                       placeholder={sendMax ? 'Entire balance (minus fee)' : '0.0'}
-                      aria-label={`Amount in ${brand.assetLabel}`}
+                      aria-label={`Amount in ${asset}`}
                     />
                   </div>
                   <Button variant={sendMax ? 'primary' : 'secondary'} style={{ height: 38 }} disabled={busy} onClick={() => setSendMax((m) => !m)}>
@@ -270,9 +271,9 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
           <>
             <div style={{ background: 'var(--well)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
               <ReviewRow label="To" value={preview.recipient} mono />
-              <ReviewRow label="Amount" value={`${formatNative(preview.amountAtomic)} ${brand.assetLabel}`} />
-              <ReviewRow label="Network fee" value={`${formatNative(preview.feeAtomic)} ${brand.assetLabel}`} />
-              {preview.changeAtomic !== '0' && <ReviewRow label="Change" value={`${formatNative(preview.changeAtomic)} ${brand.assetLabel} — returns to the key's address`} />}
+              <ReviewRow label="Amount" value={`${formatNative(preview.amountAtomic)} ${asset}`} />
+              <ReviewRow label="Network fee" value={`${formatNative(preview.feeAtomic)} ${asset}`} />
+              {preview.changeAtomic !== '0' && <ReviewRow label="Change" value={`${formatNative(preview.changeAtomic)} ${asset} — returns to the key's address`} />}
               <ReviewRow label="Signature" value={preview.signature} />
             </div>
             {sendMax && <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.5 }}>Full sweep: the address is emptied, no change output, and the key is wiped after sending.</div>}

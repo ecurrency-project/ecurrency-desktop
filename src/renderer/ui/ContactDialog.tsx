@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { brand } from '../brand'
 import { Button } from './Button'
 import { TextField } from './fields'
 import { TrashIcon } from './icons'
@@ -8,12 +7,15 @@ import { Modal } from './Modal'
 // Add/edit-contact modal. Presentational: the caller supplies onSubmit (which may
 // throw to surface a validation error) and owns persistence. When onDelete is
 // given the dialog is in edit mode and shows a delete (trash) action. Fields
-// reset to the initial values each time the dialog opens.
+// reset to the initial values each time the dialog opens. The address hint is a
+// prop (not read from brand here) because it depends on the build network — the
+// ui layer stays free of the data cache that knows it.
 export function ContactDialog({
   open,
   onClose,
   onSubmit,
   onDelete,
+  addressPlaceholder,
   title = 'Add contact',
   initialName = '',
   initialAddress = '',
@@ -23,6 +25,7 @@ export function ContactDialog({
   onClose: () => void
   onSubmit: (name: string, address: string) => Promise<void>
   onDelete?: () => Promise<void>
+  addressPlaceholder: string
   title?: string
   initialName?: string
   initialAddress?: string
@@ -101,7 +104,7 @@ export function ContactDialog({
           mono
           value={address}
           onChange={(e) => setAddress(e.target.value)}
-          placeholder={brand.addressPlaceholder}
+          placeholder={addressPlaceholder}
           aria-label="Contact address"
           state={error !== null ? 'error' : 'default'}
           hint={error ?? undefined}

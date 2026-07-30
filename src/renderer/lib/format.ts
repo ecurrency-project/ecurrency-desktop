@@ -1,6 +1,6 @@
 // Display helpers for the renderer. Amounts arrive as atomic native-coin strings over the
 // IPC bridge (bigint-safe); we format with integer math only — never floats.
-import { brand } from '../brand'
+// Brand-free on purpose: the native ticker is per-network, so callers pass it in.
 
 // The native coin has 10^8 atomic units (mirrors the node's denominator).
 const NATIVE_DECIMALS = 8
@@ -51,10 +51,11 @@ export function shortHash(hash: string): string {
 }
 
 /** The headline amount for a history row: the token movement when the transaction
- *  moved a token, otherwise native coin. The caller prefixes the +/− sign. */
-export function historyAmount(tx: { tokenId?: string; tokenAmountAtomic?: string; tokenDecimals?: number; tokenTicker?: string; amountAtomic: string }): string {
+ *  moved a token, otherwise native coin. The caller prefixes the +/− sign and
+ *  passes the native ticker (per-network — see `useAssetLabel`). */
+export function historyAmount(tx: { tokenId?: string; tokenAmountAtomic?: string; tokenDecimals?: number; tokenTicker?: string; amountAtomic: string }, assetLabel: string): string {
   if (tx.tokenId !== undefined) return `${formatToken(tx.tokenAmountAtomic ?? '0', tx.tokenDecimals ?? 6)} ${tx.tokenTicker ?? 'Token'}`
-  return `${formatNative(tx.amountAtomic)} ${brand.assetLabel}`
+  return `${formatNative(tx.amountAtomic)} ${assetLabel}`
 }
 
 /** A token's compact ticker (e.g. "USDT") and full name (e.g. "Tether USD"). The

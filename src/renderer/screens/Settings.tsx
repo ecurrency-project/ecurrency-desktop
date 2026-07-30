@@ -4,7 +4,7 @@ import { brand } from '../brand'
 import { AddWalletDialog } from '../components/AddWalletDialog'
 import { setAdvancedMode, useAdvancedMode } from '../lib/prefs'
 import { wallet } from '../lib/wallet'
-import { nodeDotColor, nodeSyncPercent, pollNode, probeNode, resetWalletData, setContacts as cacheSetContacts, setWallets, useActiveWallet, useContacts, useNodeStatus, useWallets, type NodeStatusSnapshot } from '../lib/walletData'
+import { nodeDotColor, nodeSyncPercent, pollNode, probeNode, resetWalletData, setContacts as cacheSetContacts, setWallets, useActiveWallet, useAddressPlaceholder, useContacts, useNodeStatus, useWallets, type NodeStatusSnapshot } from '../lib/walletData'
 import { BoltIcon, Button, ContactDialog, EyeIcon, GlobeIcon, KeyIcon, Modal, OnionIcon, PasswordField, PasswordStrength, PencilIcon, Pill, PlusIcon, RetryIcon, Screen, Segmented, ServerIcon, ShieldIcon, Switch, TextArea, TextField, TrashIcon, WalletIcon } from '../ui'
 
 // Settings: network status, security (reveal recovery phrase behind a password
@@ -930,6 +930,7 @@ function ContactsCard() {
   const { data: contacts, error: loadError } = useContacts()
   const setContacts = cacheSetContacts
   const [dialog, setDialog] = useState<Dialog | null>(null)
+  const addressHint = useAddressPlaceholder()
 
   const list = contacts ?? []
   const editing = dialog?.mode === 'edit' ? dialog.contact : null
@@ -975,6 +976,7 @@ function ContactsCard() {
       <ContactDialog
         open={dialog !== null}
         onClose={() => setDialog(null)}
+        addressPlaceholder={addressHint}
         title={editing !== null ? 'Edit contact' : 'Add contact'}
         initialName={editing?.name ?? ''}
         initialAddress={editing?.address ?? ''}
