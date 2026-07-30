@@ -10,7 +10,7 @@ const BRAND: Record<string, string> = {
 }
 
 const PALETTE: readonly { bg: string; fg: string }[] = [
-  { bg: 'var(--red-soft)', fg: 'var(--primary)' },
+  { bg: 'var(--primary-soft)', fg: 'var(--primary)' },
   { bg: 'color-mix(in srgb, var(--success) 16%, transparent)', fg: 'var(--success)' },
   { bg: 'var(--pq-soft)', fg: 'var(--pq)' },
   { bg: 'color-mix(in srgb, var(--warning) 16%, transparent)', fg: 'var(--warning)' },

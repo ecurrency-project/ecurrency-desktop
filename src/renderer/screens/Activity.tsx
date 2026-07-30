@@ -58,7 +58,7 @@ export function Activity() {
                 key={key}
                 type="button"
                 onClick={() => setFilter(key)}
-                style={{ padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 500, cursor: 'pointer', border: active ? '1px solid transparent' : '1px solid var(--border-s)', background: active ? 'var(--primary)' : 'transparent', color: active ? '#fff' : 'var(--ink-700)' }}
+                style={{ padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 500, cursor: 'pointer', border: active ? '1px solid transparent' : '1px solid var(--border-s)', background: active ? 'var(--primary)' : 'transparent', color: active ? 'var(--on-primary)' : 'var(--ink-700)' }}
               >
                 {label}
               </button>

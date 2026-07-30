@@ -1,0 +1,29 @@
+/* BRAND FILE: the accent ramp, imported by styles/app.css. Brand branches
+   replace the values in their own stack — everything else in app.css (surfaces,
+   ink, success/danger/warning, focus ring) is semantic and stays shared.
+
+   The ramp is generated in OKLCH from one brand colour, so the hover/pressed
+   steps are perceptually even, and checked against the surfaces it lands on:
+   --primary carries accent TEXT (on --bg, --card and --primary-soft) as well as
+   the primary button's fill, which is why it cannot simply be the brightest
+   version of the brand. --on-primary is the button's label: whichever of
+   near-black / white reads better on that fill — a light accent needs a dark
+   label, and the two brands legitimately differ here.
+
+   The common base ships a deliberately unbranded steel accent: any vivid colour
+   here would read as somebody's brand. */
+:root {
+  --primary: #6d8ea8;
+  --primary-h: #5e7f98;
+  --primary-p: #507089;
+  --primary-soft: #0b283c;
+  --on-primary: #131311;
+}
+
+[data-theme="light"] {
+  --primary: #5c7a92;
+  --primary-h: #4e6b83;
+  --primary-p: #436077;
+  --primary-soft: #e5f2fb;
+  --on-primary: #ffffff;
+}

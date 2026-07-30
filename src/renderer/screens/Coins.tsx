@@ -121,7 +121,7 @@ export function Coins({ onSendSelected }: { onSendSelected: (outpoints: string[]
                   key={key}
                   type="button"
                   onClick={() => setFilter(key)}
-                  style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', border: active ? '1px solid transparent' : '1px solid var(--border-s)', background: active ? 'var(--primary)' : 'transparent', color: active ? '#fff' : 'var(--ink-700)' }}
+                  style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', border: active ? '1px solid transparent' : '1px solid var(--border-s)', background: active ? 'var(--primary)' : 'transparent', color: active ? 'var(--on-primary)' : 'var(--ink-700)' }}
                 >
                   {label}
                 </button>
@@ -254,7 +254,7 @@ function CoinRow({
         aria-label="Select coin"
         aria-pressed={selected}
         title={tokenAsset !== undefined ? 'Tokens are sent from the Tokens panel, not coin control' : coin.frozen ? 'Frozen — unfreeze to select' : undefined}
-        style={{ flex: 'none', width: 20, height: 20, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: selectable ? 'pointer' : 'not-allowed', color: '#fff', border: selected ? 'none' : '1.5px solid var(--border-s)', background: selected ? 'var(--primary)' : 'transparent', opacity: selectable ? 1 : 0.4 }}
+        style={{ flex: 'none', width: 20, height: 20, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: selectable ? 'pointer' : 'not-allowed', color: 'var(--on-primary)', border: selected ? 'none' : '1.5px solid var(--border-s)', background: selected ? 'var(--primary)' : 'transparent', opacity: selectable ? 1 : 0.4 }}
       >
         {selected && <CheckIcon size={13} />}
       </button>

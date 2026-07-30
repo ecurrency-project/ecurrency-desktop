@@ -1,7 +1,12 @@
 /* Design tokens + base styles. Components style themselves inline using these
    variables (mirroring the design source); this file owns the token values and
    the global reset. Dark is the default; a light theme is provided for later via
-   [data-theme="light"]. Fonts are the system stack (no remote font fetch). */
+   [data-theme="light"]. Fonts are the system stack (no remote font fetch).
+
+   The accent ramp (--primary*, --on-primary) lives in ../brand/theme.css: it is
+   the one part of the palette each brand owns. */
+@import "../brand/theme.css";
+
 :root {
   --bg: #131311;
   --sidebar: #1b1b18;
@@ -14,16 +19,11 @@
   --ink-300: #5f5e5a;
   --border: rgba(255, 255, 255, 0.08);
   --border-s: rgba(255, 255, 255, 0.16);
-  --primary: #ca4545;
-  --primary-h: #b83737;
-  --primary-p: #a32d2d;
-  --red-soft: #3a1a1f;
   --pq: #b5aeff;
   --pq-soft: #1f1b40;
   --success: #1d9e75;
   --danger: #e07f7a;
   --warning: #ba7517;
-  --brand: #e8143e;
   --backdrop: #0b0b09;
   --frozen: #86a3ba;
   --frozen-soft: #1e2a33;
@@ -48,10 +48,6 @@
   --ink-300: #b4b2a9;
   --border: rgba(20, 19, 17, 0.1);
   --border-s: rgba(20, 19, 17, 0.18);
-  --primary: #a32d2d;
-  --primary-h: #8a2424;
-  --primary-p: #771e1e;
-  --red-soft: #fcebeb;
   --pq: #3c3489;
   --pq-soft: #eeedfe;
   --success: #157a5c;
@@ -445,7 +441,8 @@ button {
 }
 .btn--primary {
   background: var(--primary);
-  color: #fff;
+  /* Per brand: a light accent needs a dark label to stay legible. */
+  color: var(--on-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 .btn--primary:hover:not(:disabled) {
@@ -615,7 +612,7 @@ textarea.field {
   color: var(--ink-900);
 }
 .nav-item[data-active='true'] {
-  background: var(--red-soft);
+  background: var(--primary-soft);
   color: var(--ink-900);
 }
 .nav-item[data-active='true'] > span {

@@ -327,7 +327,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                       }}
                       style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: '9px 11px', border: 'none', background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left' }}
                     >
-                      <span style={{ width: 30, height: 30, flex: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--red-soft)', color: 'var(--primary)', fontWeight: 700, fontSize: 13 }}>
+                      <span style={{ width: 30, height: 30, flex: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary-soft)', color: 'var(--primary)', fontWeight: 700, fontSize: 13 }}>
                         {c.name.slice(0, 1).toUpperCase()}
                       </span>
                       <span style={{ flex: 1, minWidth: 0 }}>
@@ -425,7 +425,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                     }
                     enableMax()
                   }}
-                  style={{ flex: 'none', minWidth: 48, height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-s)', background: maxMode ? 'var(--red-soft)' : 'transparent', color: 'var(--primary)', fontSize: 12, fontWeight: 600, cursor: maxLoading ? 'default' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ flex: 'none', minWidth: 48, height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-s)', background: maxMode ? 'var(--primary-soft)' : 'transparent', color: 'var(--primary)', fontSize: 12, fontWeight: 600, cursor: maxLoading ? 'default' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {maxLoading ? <span className="spinner spinner--xs" aria-label="Calculating" /> : 'Max'}
                 </button>
@@ -528,7 +528,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                           className="picker-row"
                           style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: '10px 10px', borderRadius: 9, cursor: 'pointer', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit' }}
                         >
-                          <span style={{ flex: 'none', width: 18, height: 18, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', border: sel ? 'none' : '1.5px solid var(--border-s)', background: sel ? 'var(--primary)' : 'transparent' }}>{sel && <CheckIcon size={12} />}</span>
+                          <span style={{ flex: 'none', width: 18, height: 18, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--on-primary)', border: sel ? 'none' : '1.5px solid var(--border-s)', background: sel ? 'var(--primary)' : 'transparent' }}>{sel && <CheckIcon size={12} />}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{c.label ?? c.address}</span>

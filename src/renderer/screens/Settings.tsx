@@ -264,7 +264,7 @@ function NodeSlot({ icon, name, detail, selected = false, disabled = false, onSe
           onSelect?.()
         }
       }}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderTop: '1px solid var(--border)', cursor: interactive ? 'pointer' : 'default', opacity: disabled ? 0.5 : 1, background: selected ? 'var(--red-soft)' : 'transparent' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderTop: '1px solid var(--border)', cursor: interactive ? 'pointer' : 'default', opacity: disabled ? 0.5 : 1, background: selected ? 'var(--primary-soft)' : 'transparent' }}
     >
       <RadioDot checked={selected} />
       <span style={{ display: 'flex', color: selected ? 'var(--primary)' : 'var(--ink-500)' }}>{icon}</span>
@@ -808,7 +808,7 @@ function AccountsCard() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: w.kind === 'watch' ? 'var(--well)' : 'var(--red-soft)',
+              background: w.kind === 'watch' ? 'var(--well)' : 'var(--primary-soft)',
               color: w.kind === 'watch' ? 'var(--ink-700)' : 'var(--primary)',
             }}
           >
@@ -973,7 +973,7 @@ function ContactsCard() {
       ) : (
         list.map((c) => (
           <div key={c.address} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 18px', borderTop: '1px solid var(--border)' }}>
-            <span style={{ width: 34, height: 34, flex: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--red-soft)', color: 'var(--primary)', fontSize: 14, fontWeight: 700 }}>{c.name.slice(0, 1).toUpperCase()}</span>
+            <span style={{ width: 34, height: 34, flex: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary-soft)', color: 'var(--primary)', fontSize: 14, fontWeight: 700 }}>{c.name.slice(0, 1).toUpperCase()}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink-900)' }}>{c.name}</div>
               <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--ink-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.address}</div>
