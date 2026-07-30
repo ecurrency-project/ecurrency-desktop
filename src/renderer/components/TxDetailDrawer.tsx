@@ -295,7 +295,7 @@ function IoList({
             ) : (
               <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)' }}>—</span>
             )}
-            {e.own && <Badge text="YOU" color="var(--primary)" bg="var(--red-soft)" />}
+            {e.own && <Badge text="YOU" color="var(--primary)" bg="var(--primary-soft)" />}
             {e.pq && <Badge text="PQ" color="var(--pq)" bg="var(--pq-soft)" />}
             {kind === 'out' && <OutTag own={e.own} incoming={incoming} />}
           </div>
