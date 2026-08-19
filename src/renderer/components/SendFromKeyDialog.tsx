@@ -3,7 +3,7 @@ import type { AddressAlgo, KeyInspection, SendPreview } from '../../shared/proto
 import { formatNative, parseNative } from '../lib/format'
 import { wallet } from '../lib/wallet'
 import { useAssetLabel } from '../lib/walletData'
-import { AlertIcon, AtomIcon, Button, Modal, Pill, Segmented, TextArea, TextField } from '../ui'
+import { Alert, AtomIcon, Button, Modal, Pill, Segmented, TextArea, TextField } from '../ui'
 
 // "Send from a key" — the one-dialog quick path: paste a WIF, see its balance,
 // send, done. Backed by the EPHEMERAL sweep session in main (sweep.ts): the key
@@ -232,12 +232,9 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
               <code style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-500)', wordBreak: 'break-all' }}>{scanned.address}</code>
             </div>
             {emptyBalance ? (
-              <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', border: '1px solid var(--border)', background: 'var(--well)', borderRadius: 12, padding: '10px 12px' }}>
-                <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
-                  <AlertIcon size={16} />
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>Nothing to send — this key holds no spendable {asset}. Close to finish; the key will be wiped from memory.</span>
-              </div>
+              <Alert variant="caution">
+                <span>Nothing to send — this key holds no spendable {asset}. Close to finish; the key will be wiped from memory.</span>
+              </Alert>
             ) : (
               <>
                 <TextField label="Send to" mono value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="Recipient address (e.g. your own wallet)" aria-label="Recipient address" />

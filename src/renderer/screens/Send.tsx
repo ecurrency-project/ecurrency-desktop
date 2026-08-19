@@ -4,7 +4,7 @@ import { formatNative, formatToken, parseNative, parseToken, tokenLabels } from 
 import { wallet } from '../lib/wallet'
 import { coinSelectionShort, isInsufficientFundsError } from '../lib/sendValidation'
 import { invalidate, setContacts as cacheSetContacts, useActiveWallet, useAddressPlaceholder, useAssetLabel, useCoins, useContacts, useTokens } from '../lib/walletData'
-import { AlertIcon, Button, CheckIcon, ChevDownIcon, ChevRightIcon, CoinsIcon, ContactDialog, ContactIcon, CopyIcon, EyeIcon, Pill, PlusIcon, Screen } from '../ui'
+import { Alert, AlertIcon, Button, CheckIcon, ChevDownIcon, ChevRightIcon, CoinsIcon, ContactDialog, ContactIcon, CopyIcon, EyeIcon, Pill, PlusIcon, Screen } from '../ui'
 
 // Send flow: form → review (built + held in main) → sending (sign + broadcast) →
 // done / failed. The renderer never builds or signs; it calls window.wallet and
@@ -469,29 +469,21 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
             </div>
 
             {feeBlocked && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '11px 13px', borderRadius: 10, background: 'color-mix(in srgb, var(--warning) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--warning) 32%, transparent)' }}>
-                <span style={{ display: 'flex', flex: 'none', color: 'var(--warning)', marginTop: 1 }}>
-                  <AlertIcon size={16} />
-                </span>
-                <div style={{ fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.45 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--ink-900)' }}>You need a little {nativeLabel} to pay the network fee.</span> Add {nativeLabel} to send tokens.
-                </div>
-              </div>
+              <Alert variant="warning">
+                <span style={{ fontWeight: 600, color: 'var(--ink-900)' }}>You need a little {nativeLabel} to pay the network fee.</span> Add {nativeLabel} to send tokens.
+              </Alert>
             )}
 
             {feeShort && selectedCoins.size === 0 && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '11px 13px', borderRadius: 10, background: 'color-mix(in srgb, var(--warning) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--warning) 32%, transparent)' }}>
-                <span style={{ display: 'flex', flex: 'none', color: 'var(--warning)', marginTop: 1 }}>
-                  <AlertIcon size={16} />
-                </span>
-                <div style={{ fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.45 }}>
+              <Alert variant="warning">
+                <div>
                   <span style={{ fontWeight: 600, color: 'var(--ink-900)' }}>Amount plus the network fee exceeds your spendable balance.</span> Lower the amount, or{' '}
                   <button type="button" onClick={enableMax} disabled={maxLoading} style={maxLinkStyle}>
                     send maximum
                   </button>{' '}
                   to empty it minus the fee.
                 </div>
-              </div>
+              </Alert>
             )}
 
             {/* Coin control — collapsed by default (automatic). Native sends only; a
@@ -584,12 +576,9 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                     Saved contact
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '7px 10px', borderRadius: 8, background: 'color-mix(in srgb, var(--warning) 13%, transparent)', fontSize: 12, fontWeight: 500, color: 'var(--warning)' }}>
-                    <span style={{ flex: 'none', display: 'flex' }}>
-                      <AlertIcon size={16} />
-                    </span>
+                  <Alert variant="chip" style={{ marginTop: 8 }}>
                     Not in your contacts — double-check every character before sending.
-                  </div>
+                  </Alert>
                 )}
               </div>
               {tokenPreview !== null ? (

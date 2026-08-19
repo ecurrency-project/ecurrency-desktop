@@ -6,7 +6,7 @@ import { formatToken } from '../lib/format'
 import { wallet } from '../lib/wallet'
 import { assetLabelFor } from '../brand/labels'
 import { useAddressPlaceholder, useBuildNetwork, useCoins } from '../lib/walletData'
-import { AlertIcon, Button, CheckIcon, CopyIcon, CopyValue, Screen, Segmented, TextField } from '../ui'
+import { Alert, Button, CheckIcon, CopyIcon, CopyValue, Screen, Segmented, TextField } from '../ui'
 
 // Convert: the source-chain → native upgrade flow (design:
 // docs/btc-upgrade-design.md §4.1). Deposit to your own staging address →
@@ -291,19 +291,11 @@ export function Convert() {
         {loadError !== null && <div className="field-hint field-hint--error">{loadError}</div>}
 
         {(btcSync?.synced === false || (btcSync?.headers !== undefined && btcSync.scanned !== undefined && btcSync.headers - btcSync.scanned > 2)) && (
-          <div
-            role="status"
-            style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--card)', border: '1px solid var(--warning)', borderRadius: 12, padding: '12px 14px', fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.5 }}
-          >
-            <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
-              <AlertIcon size={16} />
-            </span>
-            <span>
-              {btcSync?.synced === false
-                ? `The ${nativeLabel} node is still syncing the ${src} chain. You can deposit and convert now, but the network will only credit conversions after that sync completes — expect a delay.`
-                : `The ${nativeLabel} node is still scanning ${src} blocks (${String((btcSync?.headers ?? 0) - (btcSync?.scanned ?? 0))} behind). Conversions are credited once the payment's block has been scanned.`}
-            </span>
-          </div>
+          <Alert variant="banner">
+            {btcSync?.synced === false
+              ? `The ${nativeLabel} node is still syncing the ${src} chain. You can deposit and convert now, but the network will only credit conversions after that sync completes — expect a delay.`
+              : `The ${nativeLabel} node is still scanning ${src} blocks (${String((btcSync?.headers ?? 0) - (btcSync?.scanned ?? 0))} behind). Conversions are credited once the payment's block has been scanned.`}
+          </Alert>
         )}
 
         {/* Both directions ship on this brand: BTC→native (upgrade) and
@@ -399,15 +391,12 @@ export function Convert() {
                 placeholder={addressHint}
                 aria-label="Destination address"
               />
-              <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: 'var(--well)', border: '1px solid var(--border)' }}>
-                <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
-                  <AlertIcon size={16} />
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>
+              <Alert variant="caution">
+                <span>
                   Conversion is one-way and cannot be undone. The {nativeLabel} amount follows the protocol rate at
                   credit time (≈1% protocol fee applies) and arrives after ~3–4 hours.
                 </span>
-              </div>
+              </Alert>
               {error !== null && <div className="field-hint field-hint--error">{error}</div>}
               <Button size="cta" disabled={busy || !hasFunds || dest.trim() === '' || (!convertAll && amount.trim() === '') || belowMin} onClick={() => void review()}>
                 {busy ? 'Preparing…' : hasFunds ? 'Review conversion' : `Waiting for ${src} deposit…`}
@@ -600,14 +589,9 @@ export function Convert() {
                     service picks the conversion up. If nothing picks it up within 48 hours, you can reclaim the
                     {' '}{nativeLabel} below.
                   </div>
-                  <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: 'var(--well)', border: '1px solid var(--border)' }}>
-                    <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
-                      <AlertIcon size={16} />
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.5 }}>
-                      Once the service picks it up, the conversion is one-way and cannot be undone.
-                    </span>
-                  </div>
+                  <Alert variant="caution">
+                    Once the service picks it up, the conversion is one-way and cannot be undone.
+                  </Alert>
                   {downError !== null && <div className="field-hint field-hint--error">{downError}</div>}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <Button variant="secondary" style={{ flex: 1 }} disabled={downBusy} onClick={() => setDownStage('form')}>
