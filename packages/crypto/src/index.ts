@@ -78,13 +78,26 @@ export {
   ALGO_POSTQUANTUM_BIT,
   DENOMINATOR,
   SIGHASH,
+  DOWNGRADE,
   UPGRADE,
   WIF_VERSION,
   isPostQuantum,
   type Algorithm,
   type Network,
+  type DowngradeChainConfig,
   type UpgradeChainConfig,
 } from './constants';
+
+export {
+  buildFreezeOutput,
+  downgradeScript,
+  freezeOutputData,
+  freezeScript,
+  reclaimCsvValue,
+  reclaimIdFor,
+  reclaimScripthash,
+  signReclaimInput,
+} from './downgrade';
 
 // Script construction.
 export {
