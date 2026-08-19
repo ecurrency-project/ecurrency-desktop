@@ -61,19 +61,8 @@ export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey
   // signTransaction dispatches the actual signing per `algo`.
   const signers: SigningInput[] = await Promise.all(
     unsigned.inputs.map(async (input, index): Promise<SigningInput> => {
-      const scheme = input.scheme !== undefined ? requireScheme(input.scheme) : activeScheme()
-      if (input.algo === 'falcon512') {
-        const kp = await deriveFalconKeypair(master, input.account, input.chain, input.index, network, scheme)
-        return { inputIndex: index, privateKey: kp.privateKey, publicKey: kp.publicKey, algo: 'falcon512' }
-      }
-      if (input.algo !== 'ecdsa') {
-        throw new Error(`Unsupported signing algorithm: ${input.algo}`)
-      }
-      const child = derivePath(master, nativePathFor(scheme, input.account, input.index, network, input.chain))
-      if (child.privateKey === null || child.publicKey === null) {
-        throw new Error(`No key material for input ${index}`)
-      }
-      return { inputIndex: index, privateKey: child.privateKey, publicKey: child.publicKey, algo: 'ecdsa' }
+      const kp = await deriveInputKeypair(master, input, network)
+      return { inputIndex: index, privateKey: kp.privateKey, publicKey: kp.publicKey, algo: input.algo === 'falcon512' ? 'falcon512' : 'ecdsa' }
     }),
   )
   try {
@@ -81,6 +70,33 @@ export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey
   } finally {
     for (const signer of signers) signer.privateKey.fill(0)
   }
+}
+
+/**
+ * Key material for one input, derived on its own branch and scheme (a
+ * legacy-scheme UTXO must be signed with the key at its OWN path). Exposed for
+ * flows that need an input's key OUTSIDE plain signing — the downgrade freeze
+ * commits hash256 of its first input's pubkey, and the reclaim later signs
+ * with that same key. Callers wipe `privateKey` after use.
+ */
+export async function deriveInputKeypair(
+  master: HDKey,
+  input: { readonly account: number; readonly chain: 0 | 1; readonly index: number; readonly algo: string; readonly scheme?: string },
+  network: Network,
+): Promise<{ privateKey: Uint8Array; publicKey: Uint8Array }> {
+  const scheme = input.scheme !== undefined ? requireScheme(input.scheme) : activeScheme()
+  if (input.algo === 'falcon512') {
+    const kp = await deriveFalconKeypair(master, input.account, input.chain, input.index, network, scheme)
+    return { privateKey: kp.privateKey, publicKey: kp.publicKey }
+  }
+  if (input.algo !== 'ecdsa') {
+    throw new Error(`Unsupported signing algorithm: ${input.algo}`)
+  }
+  const child = derivePath(master, nativePathFor(scheme, input.account, input.index, network, input.chain))
+  if (child.privateKey === null || child.publicKey === null) {
+    throw new Error('No key material for input')
+  }
+  return { privateKey: child.privateKey, publicKey: child.publicKey }
 }
 
 /** Sign, serialize, and compute the txid. The wire hex is what gets broadcast. */

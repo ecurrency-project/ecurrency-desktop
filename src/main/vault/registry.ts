@@ -41,7 +41,7 @@ const REGISTRY_VERSION = 1
 
 // Per-wallet files that move under `wallets/<id>/`. The address book is global and
 // deliberately absent from this list.
-const PER_WALLET_FILES = ['vault.json', 'walletmeta.json', 'coinmeta.json', 'txlabels.json', 'snapshot.json', 'upgrade.json'] as const
+const PER_WALLET_FILES = ['vault.json', 'walletmeta.json', 'coinmeta.json', 'txlabels.json', 'snapshot.json', 'upgrade.json', 'downgrade.json'] as const
 
 /** Absolute path to a wallet's directory under userData. */
 export function walletDir(userDataDir: string, walletId: string): string {

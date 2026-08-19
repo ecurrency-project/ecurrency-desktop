@@ -61,6 +61,13 @@ export function balanceOf(info: AddressInfo): bigint {
   return net < 0n ? 0n : net;
 }
 
+/** Whether (and by which transaction) an output has been spent. */
+export interface Outspend {
+  readonly spent: boolean;
+  /** Spending txid, present when `spent`. */
+  readonly txid?: string;
+}
+
 // ─── UTXO ────────────────────────────────────────────────────────────
 
 export interface Utxo {
@@ -240,6 +247,8 @@ export interface NodeStatus {
   readonly blocks: number;
   /** True while the node is still syncing (Esplora `initialblockdownload`). */
   readonly initialBlockDownload: boolean;
+  /** Total generated coins in atomic units, when the node reports it. */
+  readonly totalCoins?: bigint;
   /**
    * Whether the node has finished syncing the BITCOIN chain (upgrade-capable
    * nodes ignore upgrade txs until it has). Absent when the node doesn't

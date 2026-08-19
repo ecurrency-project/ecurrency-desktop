@@ -23,6 +23,7 @@ import type {
   NodeStatus,
   TokenInfo,
   TokenTransfer,
+  Outspend,
   Utxo,
 } from './types';
 import type { TransportOptions } from './transport';
@@ -79,6 +80,10 @@ export class ChainClient {
 
   getTransaction(txid: string): Promise<ChainTx> {
     return this.tryEachRead((c) => c.getTransaction(txid));
+  }
+
+  getOutspend(txid: string, vout: number): Promise<Outspend> {
+    return this.tryEachRead((c) => c.getOutspend(txid, vout));
   }
 
   getTransactionHex(txid: string): Promise<string> {
