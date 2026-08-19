@@ -476,9 +476,9 @@ export class EsploraClient {
 function parseAddressStats(raw: RawAddressStats): AddressStats {
   return {
     fundedTxCount: requireInt(raw.funded_txo_count, 'funded_txo_count'),
-    fundedSum: requireBigint(raw.funded_txo_sum, 'funded_txo_sum'),
+    fundedSum: parseCumulativeSat(raw.funded_txo_sum, 'funded_txo_sum'),
     spentTxCount: requireInt(raw.spent_txo_count, 'spent_txo_count'),
-    spentSum: requireBigint(raw.spent_txo_sum, 'spent_txo_sum'),
+    spentSum: parseCumulativeSat(raw.spent_txo_sum, 'spent_txo_sum'),
   };
 }
 
@@ -783,15 +783,49 @@ function requireInt(v: unknown, field: string): number {
   return n;
 }
 
+/**
+ * Parse a CUMULATIVE sat sum (funded_txo_sum / spent_txo_sum, token balance
+ * totals). Unlike a transaction value — bounded by MAX_VALUE, far below
+ * 2^53, where a float always means corruption — these sums grow without
+ * bound: a staking address re-funds itself every block, and a busy one
+ * overflows uint64 on the NODE side, which then serializes the running
+ * total as a double ("1.54159394334483e+21"). The digits beyond double
+ * precision are already lost at the source, so the exact-integer rule
+ * cannot be enforced here; the double is converted exactly instead (its
+ * error is a few source-side ULP — fractions of a coin at that magnitude).
+ * Strings and safe integers stay exact.
+ */
+function parseCumulativeSat(v: unknown, field: string): bigint {
+  if (typeof v === 'string') {
+    if (!/^[0-9]+$/.test(v)) {
+      throw new ChainError(
+        'malformed_response',
+        `Field '${field}' is not a non-negative integer: ${v}`,
+      );
+    }
+    return BigInt(v);
+  }
+  if (typeof v !== 'number' || !Number.isFinite(v) || !Number.isInteger(v) || v < 0) {
+    throw new ChainError(
+      'malformed_response',
+      `Field '${field}' is not a non-negative integer: ${String(v)}`,
+    );
+  }
+  // Every finite double >= 2^53 is integer-valued, so BigInt() is exact on
+  // the double itself; the rounding happened before it reached us.
+  return BigInt(v);
+}
+
 const TOKEN_DEFAULT_DECIMALS = 6;
 
 /** Parse the address-info `tokens` map: token_id (hex) → balance (bigint).
- *  Values arrive as numbers or numeric strings (like the sat sums). */
+ *  Values arrive as numbers or numeric strings (like the sat sums); token
+ *  balances are uint64 running totals, so they get the cumulative parser. */
 function parseTokens(raw: unknown): Record<string, bigint> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
   const out: Record<string, bigint> = {};
   for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
-    out[id] = requireBigint(v, `tokens.${id}`);
+    out[id] = parseCumulativeSat(v, `tokens.${id}`);
   }
   return out;
 }
