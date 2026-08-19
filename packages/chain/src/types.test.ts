@@ -64,6 +64,18 @@ describe('balanceOf', () => {
     // net = 350M
     expect(balanceOf(info)).toBe(350_000_000n);
   });
+
+  it('clamps a rounding-negative total to zero', () => {
+    // An emptied heavy-staking address: both cumulative sums came from
+    // node-side doubles, and their difference can dip a hair below zero.
+    const info: AddressInfo = {
+      address: 'EC…',
+      chain: { fundedTxCount: 751_820, fundedSum: 1_541_593_943_344_830_000_000n, spentTxCount: 751_820, spentSum: 1_541_593_943_344_830_262_144n },
+      mempool: { fundedTxCount: 0, fundedSum: 0n, spentTxCount: 0, spentSum: 0n },
+      tokens: {},
+    };
+    expect(balanceOf(info)).toBe(0n);
+  });
 });
 
 describe('DEFAULT_NODES + nodesFor', () => {

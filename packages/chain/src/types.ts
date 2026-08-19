@@ -52,7 +52,13 @@ export interface TokenInfo {
 export function balanceOf(info: AddressInfo): bigint {
   const confirmed = info.chain.fundedSum - info.chain.spentSum;
   const pending = info.mempool.fundedSum - info.mempool.spentSum;
-  return confirmed + pending;
+  const net = confirmed + pending;
+  // The cumulative sums of a heavy staking address overflow uint64 on the
+  // node and arrive as doubles; their rounding can push an emptied address
+  // a few hundred thousand atomic units below zero. A real balance can't be
+  // negative, so clamp the total (NOT the mempool term — a pending spend is
+  // legitimately negative there).
+  return net < 0n ? 0n : net;
 }
 
 // ─── UTXO ────────────────────────────────────────────────────────────
