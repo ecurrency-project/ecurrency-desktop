@@ -25,6 +25,7 @@ import type {
   ConfirmationStatus,
   FeeEstimates,
   NodeStatus,
+  Outspend,
   TokenInfo,
   TokenTransfer,
   Utxo,
@@ -332,7 +333,7 @@ export class EsploraClient {
   /** `GET /api/status` → node sync state (chain, height, syncing). The node
    *  exposes this on both the public and a self-hosted endpoint. */
   async getNodeStatus(): Promise<NodeStatus> {
-    const raw = await request<{ chain?: unknown; blocks?: unknown; initialblockdownload?: unknown; btc_synced?: unknown; btc_headers?: unknown; btc_scanned?: unknown }>(
+    const raw = await request<{ chain?: unknown; blocks?: unknown; initialblockdownload?: unknown; total_coins?: unknown; btc_synced?: unknown; btc_headers?: unknown; btc_scanned?: unknown }>(
       { url: `${this.endpoint.url}/api/status`, expect: 'json' },
       this.transportOpts,
     );
@@ -340,12 +341,32 @@ export class EsploraClient {
       chain: typeof raw.chain === 'string' ? raw.chain : 'main',
       blocks: typeof raw.blocks === 'number' && Number.isFinite(raw.blocks) ? raw.blocks : -1,
       initialBlockDownload: raw.initialblockdownload === true,
+      // Total generated coins — the downgrade rate estimate derives the
+      // upgrade level from it (display-only; the node fixes the real rate).
+      ...(raw.total_coins !== undefined ? { totalCoins: parseCumulativeSat(raw.total_coins, 'total_coins') } : {}),
       // Only upgrade-capable nodes report it; absent = not applicable.
       ...(typeof raw.btc_synced === 'boolean' ? { btcSynced: raw.btc_synced } : {}),
       // Scan progress: credits require the FULL block to be scanned, which can
       // trail the headers by a lot — surface both so the UI can show the lag.
       ...(typeof raw.btc_headers === 'number' && Number.isFinite(raw.btc_headers) ? { btcHeaders: raw.btc_headers } : {}),
       ...(typeof raw.btc_scanned === 'number' && Number.isFinite(raw.btc_scanned) ? { btcScanned: raw.btc_scanned } : {}),
+    };
+  }
+
+  /**
+   * `GET /api/tx/<txid>/outspend/<vout>` → whether (and by which transaction)
+   * an output has been spent. The downgrade episode tracker walks the chain
+   * freeze → downgrade → burn with this.
+   */
+  async getOutspend(txid: string, vout: number): Promise<Outspend> {
+    const raw = await request<{ spent?: unknown; txid?: unknown }>(
+      { url: `${this.endpoint.url}/api/tx/${encodeURIComponent(txid)}/outspend/${String(vout)}`, expect: 'json' },
+      this.transportOpts,
+    );
+    const spent = raw.spent === true;
+    return {
+      spent,
+      ...(spent && typeof raw.txid === 'string' && raw.txid.length > 0 ? { txid: raw.txid } : {}),
     };
   }
 

@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { decodeAddress, decodeWif, exportAccountXpub, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
+import { addressFromScripthash, decodeAddress, decodeWif, DOWNGRADE, exportAccountXpub, freezeScript, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, reclaimScripthash, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
 import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
@@ -20,10 +20,12 @@ import { CoinMetaStore } from '../wallet/coinMeta'
 import { ContactService } from '../wallet/ContactService'
 import { WalletMetaStore } from '../wallet/meta'
 import { SendService } from '../wallet/SendService'
-import { signUnsignedTx } from '../wallet/signTx'
+import { deriveInputKeypair, signUnsignedTx } from '../wallet/signTx'
 import { SnapshotStore } from '../wallet/snapshot'
 import { gatherFromActive, type GatheredUtxo } from '../wallet/spendable'
 import { UpgradeService, type ConvertPlan, type ConvertRequest } from '../wallet/UpgradeService'
+import { DowngradeService } from '../wallet/DowngradeService'
+import { DowngradeMetaStore } from '../wallet/downgradeStore'
 import { UpgradeMetaStore } from '../wallet/upgradeStore'
 import { buildSeedWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } from '../wallet/watchDescriptor'
 import { createWatchAddressSource, parseWatchInput, WatchSourceStore } from '../wallet/watchSource'
@@ -55,6 +57,8 @@ interface WalletSession {
   readonly coins: CoinOps
   /** BTC→native upgrade flow; null on brands without it or key-free wallets. */
   readonly upgrade: UpgradeService | null
+  /** Native→BTC downgrade flow; null on brands without it or key-free wallets. */
+  readonly downgrade: DowngradeService | null
   /** Warm discovery + the spend pool in the background (on unlock or after a switch). */
   readonly prewarm: () => void
   /** Drop cached/held state (on lock, or when this session is replaced). */
@@ -290,6 +294,41 @@ export function createWalletCore(): WalletCore {
     }
     const send: SendOps = sendSvc ?? watchOnlySend()
 
+    // Downgrade flow: seed wallets only (needs per-input derivation for the
+    // reclaim key), gated on the brand's DOWNGRADE consensus params.
+    let downgradeSvc: DowngradeService | null = null
+    if (DOWNGRADE !== null && seedAddrSvc !== null && seedMasterKey !== null) {
+      const cfg = DOWNGRADE[NETWORK]
+      const lockPubkey = Uint8Array.from(Buffer.from(cfg.lockPubkeyHex, 'hex'))
+      const sa = seedAddrSvc
+      const signWith = seedMasterKey
+      const freezeAddr = addressFromScripthash(reclaimScripthash(freezeScript(lockPubkey, cfg.freezeSeconds)), NETWORK)
+      downgradeSvc = new DowngradeService(
+        { lockPubkey, freezeSeconds: cfg.freezeSeconds, outputSeconds: cfg.outputSeconds, btcNetwork: NETWORK },
+        chainClient,
+        new DowngradeMetaStore(new FileVaultStorage(wf('downgrade.json')), vault),
+        {
+          spendable: async () => {
+            const frozen = await frozenSet()
+            return (await gatherAll())
+              .filter((u) => u.tokenId === undefined)
+              .filter((u) => !frozen.has(`${u.txid}:${String(u.vout)}`))
+          },
+          freezeAddress: () => freezeAddr,
+          changeAddressFor: (algo) => (algo === 'falcon512' ? sa.getPqChangeAddress() : sa.getChangeAddress()),
+          feeRate: async () => (await chain.estimateFee()).medium,
+          scripthashOf: (address) => decodeAddress(address).scripthash,
+          inputPubkey: async (input) => {
+            const kp = await deriveInputKeypair(await signWith(), input, NETWORK)
+            kp.privateKey.fill(0)
+            return kp.publicKey
+          },
+          inputKeypair: async (input) => deriveInputKeypair(await signWith(), input, NETWORK),
+          signUnsigned: async (unsigned) => signUnsignedTx(unsigned, await signWith(), NETWORK),
+        },
+      )
+    }
+
     // Chain ops = the chain reads plus a local overlay that attaches user labels to
     // history items and persists the read-model snapshot (both local-only).
     const chainOps: ChainOps = {
@@ -336,7 +375,7 @@ export function createWalletCore(): WalletCore {
       bustGather()
     }
 
-    return { addresses, chain: chainOps, send, coins, upgrade: upgradeSvc, prewarm, reset }
+    return { addresses, chain: chainOps, send, coins, upgrade: upgradeSvc, downgrade: downgradeSvc, prewarm, reset }
   }
 
   let unlocked = false
@@ -758,6 +797,14 @@ export function createWalletCore(): WalletCore {
     if (active.upgrade === null) throw new Error('BTC upgrade is not available for this wallet.')
     return active.upgrade
   }
+  const requireDowngrade = (): DowngradeService => {
+    if (active.downgrade === null) throw new Error('The BTC downgrade is not available for this wallet.')
+    return active.downgrade
+  }
+  const parseAtomic = (s: string): bigint => {
+    if (!/^\d+$/.test(s)) throw new Error('Enter a valid atomic amount.')
+    return BigInt(s)
+  }
   const parseSat = (s: string): bigint => {
     if (!/^\d+$/.test(s)) throw new Error('Enter a valid satoshi amount.')
     return BigInt(s)
@@ -844,6 +891,26 @@ export function createWalletCore(): WalletCore {
         const res = await requireUpgrade().returnAll(destBtcAddress)
         return { txid: res.txid, valueSat: res.value.toString(), feeSat: res.fee.toString() }
       },
+    },
+    downgrade: {
+      info: async () => ({ enabled: active.downgrade !== null }),
+      status: async () => {
+        const views = await requireDowngrade().status()
+        return views.map((v) => ({
+          freezeTxid: v.freezeTxid,
+          vout: v.vout,
+          valueAtomic: v.valueAtomic,
+          state: v.state,
+          ...(v.btcAddress !== undefined ? { btcAddress: v.btcAddress } : {}),
+          ...(v.reclaimableAt !== undefined ? { reclaimableAt: v.reclaimableAt } : {}),
+          ...(v.downgradeTxid !== undefined ? { downgradeTxid: v.downgradeTxid } : {}),
+          ...(v.burnTxid !== undefined ? { burnTxid: v.burnTxid } : {}),
+          ...(v.btcTxid !== undefined ? { btcTxid: v.btcTxid } : {}),
+        }))
+      },
+      plan: async (amountAtomic) => requireDowngrade().plan(parseAtomic(amountAtomic)),
+      convert: async (amountAtomic, btcAddress) => requireDowngrade().convert(parseAtomic(amountAtomic), btcAddress),
+      reclaim: async (freezeTxid) => requireDowngrade().reclaim(freezeTxid),
     },
   })
 

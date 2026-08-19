@@ -27,6 +27,9 @@ import {
   type UpgradeInfo,
   type UpgradePlanView,
   type UpgradeReturnResult,
+  DowngradeEpisodeIpcView,
+  DowngradeInfoView,
+  DowngradePlanView,
   type UpgradeStatusView,
   type VaultRequest,
   type VaultStatus,
@@ -111,6 +114,11 @@ const api: WalletApi = {
   upgradePlan: (req) => request<UpgradePlanView>({ type: 'upgrade.plan', req }),
   upgradeConvert: (req, destAddress) => request<UpgradeConvertResult>({ type: 'upgrade.convert', req, destAddress }),
   upgradeReturn: (destBtcAddress) => request<UpgradeReturnResult>({ type: 'upgrade.return', destBtcAddress }),
+  downgradeInfo: () => request<DowngradeInfoView>({ type: 'downgrade.info' }),
+  downgradeStatus: () => request<readonly DowngradeEpisodeIpcView[]>({ type: 'downgrade.status' }),
+  downgradePlan: (amountAtomic) => request<DowngradePlanView>({ type: 'downgrade.plan', amountAtomic }),
+  downgradeConvert: (amountAtomic, btcAddress) => request<{ txid: string }>({ type: 'downgrade.convert', amountAtomic, btcAddress }),
+  downgradeReclaim: (freezeTxid) => request<{ txid: string }>({ type: 'downgrade.reclaim', freezeTxid }),
   onStatusChanged: (listener) => {
     const handler = (_event: unknown, status: VaultStatus): void => listener(status)
     ipcRenderer.on(WALLET_EVENT_CHANNEL, handler)

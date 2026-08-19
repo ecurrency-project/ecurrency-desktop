@@ -649,3 +649,16 @@ describe('EsploraClient — cumulative sums beyond uint64', () => {
     });
   });
 });
+
+describe('EsploraClient.getOutspend', () => {
+  it('parses spent and unspent outspends', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ spent: true, txid: 'cd'.repeat(32) }))
+      .mockResolvedValueOnce(jsonResponse({ spent: false }));
+    const client = makeClient(fetchImpl);
+    expect(await client.getOutspend('ab'.repeat(32), 0)).toEqual({ spent: true, txid: 'cd'.repeat(32) });
+    expect(await client.getOutspend('ab'.repeat(32), 1)).toEqual({ spent: false });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(`/api/tx/${'ab'.repeat(32)}/outspend/0`);
+  });
+});

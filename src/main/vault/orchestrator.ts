@@ -20,6 +20,9 @@ import {
   type WalletSnapshot,
   type UpgradeConvertRequest,
   type UpgradeConvertResult,
+  type DowngradeEpisodeIpcView,
+  type DowngradeInfoView,
+  type DowngradePlanView,
   type UpgradeInfo,
   type UpgradePlanView,
   type UpgradeReturnResult,
@@ -152,6 +155,16 @@ export interface UpgradeOps {
   returnBtc(destBtcAddress: string): Promise<UpgradeReturnResult>
 }
 
+// Native→BTC downgrade operations. Implemented in main; on brands without a
+// downgrade path every method except `info` rejects.
+export interface DowngradeOps {
+  info(): Promise<DowngradeInfoView>
+  status(): Promise<readonly DowngradeEpisodeIpcView[]>
+  plan(amountAtomic: string): Promise<DowngradePlanView>
+  convert(amountAtomic: string, btcAddress: string): Promise<{ txid: string }>
+  reclaim(freezeTxid: string): Promise<{ txid: string }>
+}
+
 export interface OrchestratorDeps {
   readonly vault: VaultLike
   readonly mnemonic: MnemonicTools
@@ -164,6 +177,7 @@ export interface OrchestratorDeps {
   readonly sweep: SweepOps
   readonly node: NodeOps
   readonly upgrade: UpgradeOps
+  readonly downgrade: DowngradeOps
 }
 
 // Handles every wallet request from the renderer. Vault-lifecycle requests are
@@ -312,6 +326,16 @@ export class VaultOrchestrator {
           return ok(await this.deps.upgrade.convert(request.req, request.destAddress))
         case 'upgrade.return':
           return ok(await this.deps.upgrade.returnBtc(request.destBtcAddress))
+        case 'downgrade.info':
+          return ok(await this.deps.downgrade.info())
+        case 'downgrade.status':
+          return ok(await this.deps.downgrade.status())
+        case 'downgrade.plan':
+          return ok(await this.deps.downgrade.plan(request.amountAtomic))
+        case 'downgrade.convert':
+          return ok(await this.deps.downgrade.convert(request.amountAtomic, request.btcAddress))
+        case 'downgrade.reclaim':
+          return ok(await this.deps.downgrade.reclaim(request.freezeTxid))
         default:
           return fail(new Error(`Unknown request: ${String((request as { type: unknown }).type)}`))
       }

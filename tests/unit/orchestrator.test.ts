@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { VaultOrchestrator, type AddressOps, type ChainOps, type CoinOps, type ContactOps, type MnemonicTools, type NodeOps, type SendOps, type SweepOps, type UpgradeOps, type VaultLike, type WalletOps } from '../../src/main/vault/orchestrator'
+import { VaultOrchestrator, type AddressOps, type ChainOps, type CoinOps, type ContactOps, type MnemonicTools, type NodeOps, type SendOps, type SweepOps, type DowngradeOps,
+  type UpgradeOps, type VaultLike, type WalletOps } from '../../src/main/vault/orchestrator'
 import type { NodeSettings, VaultStatus } from '../../src/shared/protocol'
 
 const SEED = 'SEED-MUST-NEVER-CROSS-THE-BRIDGE'
@@ -132,6 +133,22 @@ const NODE: NodeOps = {
   removeCustom: async () => nodeSettings(),
 }
 
+const DOWNGRADE_OPS: DowngradeOps = {
+  info: async () => ({ enabled: false }),
+  status: async () => {
+    throw new Error('The BTC downgrade is not available for this wallet.')
+  },
+  plan: async () => {
+    throw new Error('The BTC downgrade is not available for this wallet.')
+  },
+  convert: async () => {
+    throw new Error('The BTC downgrade is not available for this wallet.')
+  },
+  reclaim: async () => {
+    throw new Error('The BTC downgrade is not available for this wallet.')
+  },
+}
+
 const UPGRADE_OPS: UpgradeOps = {
   info: async () => ({ enabled: false }),
   status: async () => {
@@ -152,7 +169,7 @@ function make() {
   const vault = new FakeVault()
   return {
     vault,
-    orch: new VaultOrchestrator({ vault, mnemonic: TOOLS, addresses: ADDRESSES, chain: CHAIN, send: SEND, coins: COINS, contacts: CONTACTS, wallets: WALLETS, sweep: SWEEP, node: NODE, upgrade: UPGRADE_OPS }),
+    orch: new VaultOrchestrator({ vault, mnemonic: TOOLS, addresses: ADDRESSES, chain: CHAIN, send: SEND, coins: COINS, contacts: CONTACTS, wallets: WALLETS, sweep: SWEEP, node: NODE, upgrade: UPGRADE_OPS, downgrade: DOWNGRADE_OPS }),
   }
 }
 

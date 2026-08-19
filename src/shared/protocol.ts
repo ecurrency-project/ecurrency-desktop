@@ -96,6 +96,11 @@ export type VaultRequest =
   | { readonly type: 'upgrade.plan'; readonly req: UpgradeConvertRequest }
   | { readonly type: 'upgrade.convert'; readonly req: UpgradeConvertRequest; readonly destAddress: string }
   | { readonly type: 'upgrade.return'; readonly destBtcAddress: string }
+  | { readonly type: 'downgrade.info' }
+  | { readonly type: 'downgrade.status' }
+  | { readonly type: 'downgrade.plan'; readonly amountAtomic: string }
+  | { readonly type: 'downgrade.convert'; readonly amountAtomic: string; readonly btcAddress: string }
+  | { readonly type: 'downgrade.reclaim'; readonly freezeTxid: string }
 
 // --- BTC→native upgrade (dormant unless the brand configures it) ---
 // Satoshi amounts are strings across the bridge, like atomic amounts.
@@ -140,6 +145,34 @@ export interface UpgradePlanView {
 
 export interface UpgradeConvertResult {
   readonly txid: string
+}
+
+// --- Native→BTC downgrade (dormant unless the brand configures it) ---
+
+/** Capability probe: whether this build/wallet offers the downgrade flow. */
+export interface DowngradeInfoView {
+  readonly enabled: boolean
+}
+
+export interface DowngradePlanView {
+  readonly amountAtomic: string
+  readonly feeAtomic: string
+  /** Estimated NET BTC payout in satoshi (display "≈" — the node fixes the
+   *  real rate when the conversion confirms). */
+  readonly estimatedBtcSat: string
+  readonly levelEstimate: number
+}
+
+export interface DowngradeEpisodeIpcView {
+  readonly freezeTxid: string
+  readonly vout: number
+  readonly valueAtomic: string
+  readonly btcAddress?: string
+  readonly state: 'frozen' | 'reclaimable' | 'converting' | 'paid' | 'reclaimed'
+  readonly reclaimableAt?: number
+  readonly downgradeTxid?: string
+  readonly burnTxid?: string
+  readonly btcTxid?: string
 }
 
 export interface UpgradeReturnResult {
@@ -598,6 +631,16 @@ export interface WalletApi {
   upgradeConvert(req: UpgradeConvertRequest, destAddress: string): Promise<UpgradeConvertResult>
   /** Send the whole staging balance back to an arbitrary Bitcoin address. */
   upgradeReturn(destBtcAddress: string): Promise<UpgradeReturnResult>
+  /** Whether this build/wallet offers the native→BTC downgrade. */
+  downgradeInfo(): Promise<DowngradeInfoView>
+  /** Live state of every recorded downgrade episode, newest first. */
+  downgradeStatus(): Promise<readonly DowngradeEpisodeIpcView[]>
+  /** Estimate the payout and native fee of a downgrade. */
+  downgradePlan(amountAtomic: string): Promise<DowngradePlanView>
+  /** Create, sign and broadcast the freeze transaction. */
+  downgradeConvert(amountAtomic: string, btcAddress: string): Promise<{ txid: string }>
+  /** Reclaim a matured freeze/downgrade output back to the wallet. */
+  downgradeReclaim(freezeTxid: string): Promise<{ txid: string }>
   /** Subscribe to status changes pushed from main; returns an unsubscribe fn. */
   onStatusChanged(listener: (status: VaultStatus) => void): () => void
 }
