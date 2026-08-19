@@ -165,6 +165,10 @@ export interface HistoryItem {
   readonly confirmed: boolean
   readonly blockHeight?: number
   readonly blockTime?: number
+  /** tx_type id when the transaction is not a standard transfer (2 = stake,
+   *  3 = coinbase, 5 = slashing, 6 = burn, 7 = downgrade, 8 = upgrade stop,
+   *  0 = a type this build does not know); rows show it as a badge. */
+  readonly txType?: number
   /** Local, user-set label for this transaction (sealed at rest, never on-chain). */
   readonly label?: string
   // When this transaction moved a token, its movement (the headline the UI shows).
@@ -219,8 +223,11 @@ export interface TxDetail {
   readonly inputs: readonly TxIoEntry[]
   readonly outputs: readonly TxIoEntry[]
   // ── Advanced detail (always populated; shown only in advanced mode) ──
-  /** tx_type id: 1 = standard, 2 = stake, 3 = coinbase, 4 = tokens. */
+  /** tx_type id: 1 = standard, 2 = stake, 3 = coinbase, 4 = tokens,
+   *  5 = slashing, 6 = burn, 7 = downgrade, 8 = upgrade stop, 0 = unknown. */
   readonly txType?: number
+  /** The node's raw tx_type name — how an id this build does not know is shown. */
+  readonly txTypeName?: string
   readonly blockHash?: string
   readonly blockHeight?: number
   /** Position of the tx within its block (0 = first). */
@@ -236,6 +243,23 @@ export interface TxDetail {
     readonly btcBlockHeight: number
     readonly btcOutNum: number
     readonly valueSat: string
+  }
+  /**
+   * Downgrade/burn provenance (native → source-chain conversion), when the
+   * brand has one. A downgrade carries the frozen outpoint and the promised
+   * payout (btcAddress decoded from the committed scriptPubKey when it is a
+   * standard template); a burn carries the source-chain block that confirmed
+   * it. Ids/hashes are in display byte order.
+   */
+  readonly downgradeInfo?: {
+    readonly btcTxid: string
+    readonly freezeTxid?: string
+    readonly freezeVout?: number
+    readonly btcVout?: number
+    readonly btcValueSat?: string
+    readonly btcAddress?: string
+    readonly btcScriptPubKey?: string
+    readonly btcBlockHash?: string
   }
 }
 

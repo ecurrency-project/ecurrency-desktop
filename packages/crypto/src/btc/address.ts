@@ -31,6 +31,42 @@ export function btcP2pkhAddressForPubkey(pubkey: Uint8Array, network: BtcNetwork
   return btcP2pkhAddress(hash160(pubkey), network);
 }
 
+/**
+ * The inverse of decodeBtcAddress, for DISPLAY: decode a scriptPubKey into
+ * the address it pays when the script is one of the standard templates
+ * (P2PKH, P2SH, segwit v0/v1). Undefined for anything nonstandard — the
+ * caller shows the raw hex then. Used by the downgrade card, which knows
+ * only the payout scriptPubKey the freeze output committed to.
+ */
+export function btcAddressFromScriptPubKey(
+  script: Uint8Array,
+  network: BtcNetwork,
+): string | undefined {
+  // P2PKH: OP_DUP OP_HASH160 <20> OP_EQUALVERIFY OP_CHECKSIG
+  if (
+    script.length === 25 &&
+    script[0] === 0x76 && script[1] === 0xa9 && script[2] === 0x14 &&
+    script[23] === 0x88 && script[24] === 0xac
+  ) {
+    return encodeBase58Check(Uint8Array.of(P2PKH_VERSION[network]), script.subarray(3, 23));
+  }
+  // P2SH: OP_HASH160 <20> OP_EQUAL
+  if (script.length === 23 && script[0] === 0xa9 && script[1] === 0x14 && script[22] === 0x87) {
+    return encodeBase58Check(Uint8Array.of(P2SH_VERSION[network]), script.subarray(2, 22));
+  }
+  // Segwit: OP_0 <20|32> (v0) or OP_1 <32> (v1 taproot)
+  if (script.length >= 2 && script[1] === script.length - 2) {
+    const program = script.subarray(2);
+    if (script[0] === 0x00 && (program.length === 20 || program.length === 32)) {
+      return bech32Encode(BECH32_HRP[network], [0, ...toWords(program)], 'bech32');
+    }
+    if (script[0] === 0x51 && program.length === 32) {
+      return bech32Encode(BECH32_HRP[network], [1, ...toWords(program)], 'bech32m');
+    }
+  }
+  return undefined;
+}
+
 export type BtcAddressKind = 'p2pkh' | 'p2sh' | 'v0_p2wpkh' | 'v0_p2wsh' | 'v1_p2tr';
 
 export interface DecodedBtcAddress {

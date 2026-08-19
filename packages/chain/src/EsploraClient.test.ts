@@ -541,3 +541,83 @@ describe('EsploraClient.getNodeStatus', () => {
     expect(withoutFlag.btcSynced).toBeUndefined();
   });
 });
+
+describe('EsploraClient — special transaction types', () => {
+  const baseTx = {
+    txid: 'aa'.repeat(32),
+    vin: [{ txid: 'bb'.repeat(32), vout: 0, prevout: { value: 500_000, scripthash_address: 'ECsource' } }],
+    vout: [{ scripthash: 'cc', scripthash_address: 'ECout', value: 400_000 }],
+    size: 200,
+    fee: 100_000,
+    status: { confirmed: true, block_time: 1_700_000_000, block_height: 10 },
+  };
+
+  it('maps slashing/burn/downgrade/upgrade_stop names to their ids', async () => {
+    for (const [name, id] of [['slashing', 5], ['burn', 6], ['downgrade', 7], ['upgrade_stop', 8]] as const) {
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ ...baseTx, tx_type: name }));
+      const tx = await makeClient(fetchImpl).getTransaction(baseTx.txid);
+      expect(tx.version).toBe(id);
+      expect(tx.txTypeName).toBe(name);
+    }
+  });
+
+  it('does NOT fail on a tx_type this client has never heard of', async () => {
+    // A new node type must degrade to "unknown", not break every history
+    // fetch that touches such a transaction (slashing did exactly that).
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ ...baseTx, tx_type: 'wormhole' }));
+    const tx = await makeClient(fetchImpl).getTransaction(baseTx.txid);
+    expect(tx.version).toBe(0);
+    expect(tx.txTypeName).toBe('wormhole');
+  });
+
+  it('parses the freeze form of downgrade_info', async () => {
+    const raw = {
+      ...baseTx,
+      tx_type: 'downgrade',
+      downgrade_info: {
+        freeze_txid: 'dd'.repeat(32),
+        freeze_vout: 1,
+        btc_txid: 'ee'.repeat(32),
+        btc_vout: 0,
+        btc_value: 386_322,
+        btc_scriptpubkey: '76a914' + '11'.repeat(20) + '88ac',
+      },
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const tx = await makeClient(fetchImpl).getTransaction(baseTx.txid);
+    expect(tx.downgradeInfo).toEqual({
+      btcTxid: 'ee'.repeat(32),
+      freezeTxid: 'dd'.repeat(32),
+      freezeVout: 1,
+      btcVout: 0,
+      btcValueSat: 386_322n,
+      btcScriptPubKey: '76a914' + '11'.repeat(20) + '88ac',
+    });
+  });
+
+  it('parses the burn form of downgrade_info', async () => {
+    const raw = {
+      ...baseTx,
+      tx_type: 'burn',
+      downgrade_info: { btc_txid: 'ee'.repeat(32), btc_block_hash: 'ff'.repeat(32) },
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const tx = await makeClient(fetchImpl).getTransaction(baseTx.txid);
+    expect(tx.downgradeInfo).toEqual({ btcTxid: 'ee'.repeat(32), btcBlockHash: 'ff'.repeat(32) });
+  });
+
+  it('keeps a uint64 token amount exact through the transport', async () => {
+    // The node renders token_amount as a JSON NUMBER; above 2^53 only the
+    // pre-parse quoting (jsonNumbers.ts) keeps the digits intact.
+    const body = `{"txid":"${'aa'.repeat(32)}","tx_type":"tokens","size":200,"fee":1,` +
+      `"status":{"confirmed":true,"block_height":10},` +
+      `"vin":[{"txid":"${'bb'.repeat(32)}","vout":0,"prevout":{"value":1,"scripthash_address":"ECs"}}],` +
+      `"vout":[{"scripthash":"cc","scripthash_address":"ECout","value":0,` +
+      `"token_id":"${'8b'.repeat(32)}","token_amount":18446744073709551615}]}`;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    const tx = await makeClient(fetchImpl).getTransaction('aa'.repeat(32));
+    expect(tx.vout[0]!.tokenAmount).toBe(18446744073709551615n);
+  });
+});

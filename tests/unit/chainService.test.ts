@@ -240,3 +240,75 @@ describe('ChainService', () => {
     expect(items[0]).toMatchObject({ txid: 'tk2', direction: 'out', tokenId: 'tokA', tokenAmountAtomic: '5000000', tokenTicker: 'USDT' })
   })
 })
+
+describe('special transaction types (W1)', () => {
+  const baseTx = (over: Partial<ChainTx>): ChainTx => ({
+    txid: 't1',
+    version: 1,
+    vin: [{ txid: 'p', vout: 0, prevoutValue: 100n, prevoutAddress: 'addr-0-0' }],
+    vout: [{ value: 40n, scripthash: 'sh', address: 'EXT' }],
+    size: 150,
+    fee: 60n,
+    status: { confirmed: true, blockHeight: 990 },
+    ...over,
+  })
+
+  it('tags non-standard history rows with their type', async () => {
+    const slashing = baseTx({ txid: 's1', version: 5 })
+    const svc = new ChainService(
+      backend({ infos: { 'addr-0-0': fundedInfo('addr-0-0', 100n) }, txs: { 'addr-0-0': [slashing] } }),
+      branches,
+    )
+    const page = await svc.getHistory()
+    expect(page.items[0]).toMatchObject({ txid: 's1', txType: 5 })
+  })
+
+  it('leaves standard rows untagged', async () => {
+    const standard = baseTx({ txid: 'n1', version: 1 })
+    const svc = new ChainService(
+      backend({ infos: { 'addr-0-0': fundedInfo('addr-0-0', 100n) }, txs: { 'addr-0-0': [standard] } }),
+      branches,
+    )
+    const page = await svc.getHistory()
+    expect(page.items[0]!.txType).toBeUndefined()
+  })
+
+  it('carries the raw type name for an id this build does not know', async () => {
+    const unknown = baseTx({ txid: 'u1', version: 0, txTypeName: 'wormhole' })
+    const svc = new ChainService(backend({ tx: { u1: unknown } }), branches)
+    const detail = await svc.getTxDetail('u1')
+    expect(detail.txType).toBe(0)
+    expect(detail.txTypeName).toBe('wormhole')
+  })
+
+  it('threads downgrade info through and decodes the payout address', async () => {
+    // P2PKH scriptPubKey for hash160 d986ed…aa → 1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA
+    // (the pinned staging golden, so the decode is checked against a known pair).
+    const spk = '76a914d986ed01b7a22225a70edbf2ba7cfb63a15cb3aa88ac'
+    const downgrade = baseTx({
+      txid: 'd7',
+      version: 7,
+      downgradeInfo: { btcTxid: 'ee'.repeat(32), freezeTxid: 'dd'.repeat(32), freezeVout: 1, btcVout: 0, btcValueSat: 386322n, btcScriptPubKey: spk },
+    })
+    const svc = new ChainService(backend({ tx: { d7: downgrade } }), branches, { btcNetwork: 'mainnet' })
+    const detail = await svc.getTxDetail('d7')
+    expect(detail.downgradeInfo).toMatchObject({
+      btcTxid: 'ee'.repeat(32),
+      freezeTxid: 'dd'.repeat(32),
+      freezeVout: 1,
+      btcValueSat: '386322',
+      btcAddress: '1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA',
+    })
+  })
+
+  it('keeps the raw script when no btc network is configured or it is nonstandard', async () => {
+    const burn = baseTx({
+      txid: 'b6',
+      version: 6,
+      downgradeInfo: { btcTxid: 'ee'.repeat(32), btcBlockHash: 'ff'.repeat(32) },
+    })
+    const svc = new ChainService(backend({ tx: { b6: burn } }), branches)
+    const detail = await svc.getTxDetail('b6')
+    expect(detail.downgradeInfo).toEqual({ btcTxid: 'ee'.repeat(32), btcBlockHash: 'ff'.repeat(32) })
+  })
+})

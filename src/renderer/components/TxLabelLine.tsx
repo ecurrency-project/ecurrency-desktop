@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import type { HistoryItem } from '../../shared/protocol'
 import { saveTxLabel } from '../lib/walletData'
 import { PencilIcon } from '../ui'
+import { TxTypeBadge } from './TxTypeBadge'
 
 // The editable top line of an activity row: the user's transaction label when set,
 // otherwise the direction ("Received"/"Sent"), with a pencil to edit it inline. The
@@ -42,6 +43,7 @@ export function TxLabelLine({ tx, sub }: { tx: HistoryItem; sub: ReactNode }) {
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tx.label ?? fallback}</span>
+        <TxTypeBadge txType={tx.txType} />
         <button
           type="button"
           className="coin-pencil"

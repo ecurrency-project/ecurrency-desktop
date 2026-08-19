@@ -12,6 +12,7 @@
 // posture.
 
 import { ChainError, isRetryableCode, type ChainErrorCode } from './errors';
+import { quoteLargeIntegers } from './jsonNumbers';
 
 // ─── Configuration ───────────────────────────────────────────────────
 
@@ -191,7 +192,9 @@ async function doOnce<T>(
     });
   }
   try {
-    return JSON.parse(bodyText) as T;
+    // Integer literals beyond 2^53 (uint64 token amounts) are quoted first,
+    // so their digits survive parsing; see jsonNumbers.ts.
+    return JSON.parse(quoteLargeIntegers(bodyText)) as T;
   } catch (e) {
     throw new ChainError(
       'malformed_response',
