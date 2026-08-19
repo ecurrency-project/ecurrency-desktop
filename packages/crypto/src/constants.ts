@@ -103,6 +103,23 @@ export interface UpgradeChainConfig {
  */
 export const UPGRADE: Readonly<Record<Network, UpgradeChainConfig>> | null = null;
 
+/** Consensus parameters of the native→BTC downgrade (see downgrade.ts). */
+export interface DowngradeChainConfig {
+  /** The chain's lock pubkey (hex, compressed) — the only key allowed to
+   *  move a freeze into a downgrade (the freeze script's IF branch). */
+  readonly lockPubkeyHex: string;
+  /** Seconds until the user may reclaim an unpicked freeze output. */
+  readonly freezeSeconds: number;
+  /** Seconds until the user may reclaim an unburned downgrade output. */
+  readonly outputSeconds: number;
+}
+
+/**
+ * Per-network downgrade parameters, keyed by the NATIVE network — or null
+ * on brands without the flow (the reverse Convert direction stays hidden).
+ */
+export const DOWNGRADE: Readonly<Record<Network, DowngradeChainConfig>> | null = null;
+
 /**
  * SIGHASH types accepted by the protocol. The wallet only ever emits
  * `SIGHASH_ALL`. Other modes are listed for completeness so decoders /
