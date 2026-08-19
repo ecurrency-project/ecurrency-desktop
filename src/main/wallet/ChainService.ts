@@ -1,4 +1,5 @@
 import { balanceOf, type ChainTx, type FeeEstimates, type TokenInfo } from '@qbitcoin/chain'
+import { btcAddressFromScriptPubKey, fromHex, type BtcNetwork } from '@qbitcoin/crypto'
 import {
   discoverBranch,
   isActive,
@@ -37,6 +38,10 @@ export class ChainService {
     // The wallet's discovery branches (classical + any PQ), derivable or fixed.
     // Re-read on each discovery so issued-index floors stay current.
     private readonly branches: () => Promise<readonly DiscoveryBranch[]>,
+    // Which source-chain network a downgrade payout script encodes to (the
+    // native network maps 1:1 to the BTC side). Optional: without it the
+    // detail view shows the raw scriptPubKey instead of an address.
+    private readonly opts: { readonly btcNetwork?: BtcNetwork } = {},
   ) {}
 
   async getSummary(): Promise<WalletSummary> {
@@ -159,6 +164,30 @@ export class ChainService {
     if (tx.status.blockHeight !== undefined) detail.blockHeight = tx.status.blockHeight
     if (tx.status.blockPos !== undefined) detail.blockPos = tx.status.blockPos
     if (tx.isCoinbase !== undefined) detail.isCoinbase = tx.isCoinbase
+    if (tx.txTypeName !== undefined) detail.txTypeName = tx.txTypeName
+    if (tx.downgradeInfo !== undefined) {
+      const d = tx.downgradeInfo
+      const info: NonNullable<MutableTxDetail['downgradeInfo']> = { btcTxid: d.btcTxid }
+      if (d.freezeTxid !== undefined) info.freezeTxid = d.freezeTxid
+      if (d.freezeVout !== undefined) info.freezeVout = d.freezeVout
+      if (d.btcVout !== undefined) info.btcVout = d.btcVout
+      if (d.btcValueSat !== undefined) info.btcValueSat = d.btcValueSat.toString()
+      if (d.btcScriptPubKey !== undefined) {
+        info.btcScriptPubKey = d.btcScriptPubKey
+        if (this.opts.btcNetwork !== undefined) {
+          // Show WHERE the payout goes when the committed script is a
+          // standard template; nonstandard stays as hex.
+          try {
+            const addr = btcAddressFromScriptPubKey(fromHex(d.btcScriptPubKey), this.opts.btcNetwork)
+            if (addr !== undefined) info.btcAddress = addr
+          } catch {
+            // Malformed hex from the node — the raw field is still shown.
+          }
+        }
+      }
+      if (d.btcBlockHash !== undefined) info.btcBlockHash = d.btcBlockHash
+      detail.downgradeInfo = info
+    }
     if (tx.coinbaseInfo !== undefined) {
       detail.coinbaseInfo = {
         btcTxid: tx.coinbaseInfo.btcTxid,
@@ -243,6 +272,9 @@ export class ChainService {
       confirmed: tx.status.confirmed,
       blockHeight: tx.status.blockHeight,
       blockTime: tx.status.blockTime,
+      // Non-standard types surface as a badge on the row (1 = standard is
+      // implied; 4 = tokens already reads as its ticker headline).
+      ...(tx.version !== 1 && tx.version !== 4 ? { txType: tx.version } : {}),
     }
     // A token transfer drives its own direction and headline; the native side of a
     // token tx is just the fee (a send) or zero (a receive). The ticker is attached
@@ -417,7 +449,18 @@ type MutableTxDetail = {
   blockHeight?: number
   blockPos?: number
   isCoinbase?: boolean
+  txTypeName?: string
   coinbaseInfo?: { btcTxid: string; btcBlockHeight: number; btcOutNum: number; valueSat: string }
+  downgradeInfo?: {
+    btcTxid: string
+    freezeTxid?: string
+    freezeVout?: number
+    btcVout?: number
+    btcValueSat?: string
+    btcAddress?: string
+    btcScriptPubKey?: string
+    btcBlockHash?: string
+  }
 }
 
 // Signature scheme of a siglist entry, read from its algo byte. Hex layout is

@@ -237,7 +237,7 @@ export function createWalletCore(): WalletCore {
       gatherMemo = null
     }
 
-    const chain = new ChainService(chainClient, addressSource.branches)
+    const chain = new ChainService(chainClient, addressSource.branches, { btcNetwork: NETWORK })
     const coins = new CoinService({
       gather: gatherAll,
       tipHeight: async () => (await chainClient.getBlockchainInfo()).tipHeight,

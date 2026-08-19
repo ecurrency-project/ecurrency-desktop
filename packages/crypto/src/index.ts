@@ -221,6 +221,7 @@ export {
 // Bitcoin addresses (upgrade flow: staging display + Return BTC decode).
 export {
   bech32Encode,
+  btcAddressFromScriptPubKey,
   btcP2pkhAddress,
   btcP2pkhAddressForPubkey,
   decodeBtcAddress,

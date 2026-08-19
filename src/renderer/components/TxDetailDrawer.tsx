@@ -7,6 +7,7 @@ import { disassembleScript } from '../lib/script'
 import { assetLabelFor } from '../brand/labels'
 import { loadTxDetail, loadTxRaw, saveTxLabel, useAssetLabel, useBuildNetwork, useTokens } from '../lib/walletData'
 import { ChevDownIcon, CloseIcon, CopyIcon, ExternalIcon, PencilIcon } from '../ui'
+import { TxTypeBadge } from './TxTypeBadge'
 
 // Block explorer the "Explorer" button opens (brand-configured; hidden when the
 // brand has no public explorer). main routes window.open to the OS browser.
@@ -56,6 +57,9 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
 
   const incoming = tx.direction === 'in'
   const amountColor = incoming ? 'var(--success)' : 'var(--ink-900)'
+  // What the input−output difference MEANS depends on the type: a slashing
+  // tx's "fee" is the penalty the protocol keeps, a burn's is the burned sum.
+  const feeLabel = detail?.txType === 5 ? 'Penalty' : detail?.txType === 6 ? 'Burned' : 'Fee'
   const ioText = (e: TxIoEntry): string => {
     if (e.tokenId !== undefined) {
       const t = tokenById.get(e.tokenId)
@@ -98,7 +102,10 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
           <div style={{ padding: '20px 18px 26px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* Headline */}
           <div>
-            <div style={{ fontSize: 13, color: 'var(--ink-500)', fontWeight: 500 }}>{incoming ? 'Received' : 'Sent'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, color: 'var(--ink-500)', fontWeight: 500 }}>{incoming ? 'Received' : 'Sent'}</span>
+              <TxTypeBadge txType={tx.txType ?? detail?.txType} />
+            </div>
             <div style={{ fontSize: 30, fontWeight: 600, fontFamily: 'var(--display-font)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: amountColor, marginTop: 4 }}>
               {incoming ? '+' : '−'}
               {historyAmount(tx, asset)}
@@ -161,7 +168,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                   <FlowChip label="Total in" value={`${formatNative(detail.totalInAtomic)} ${asset}`} />
                   <FlowChip label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${asset}`} />
-                  <FlowChip label="Fee" value={`${formatNative(detail.feeAtomic)} ${asset}`} />
+                  <FlowChip label={feeLabel} value={`${formatNative(detail.feeAtomic)} ${asset}`} />
                 </div>
                 <IoList title="Inputs" entries={detail.inputs} sumAtomic={detail.totalInAtomic} incoming={incoming} ioText={ioText} kind="in" advanced={advanced} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 2px' }}>
@@ -179,7 +186,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <SummaryRow label="Total in" value={`${formatNative(detail.totalInAtomic)} ${asset}`} first />
               <SummaryRow label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${asset}`} />
-              <SummaryRow label="Fee" value={`${formatNative(detail.feeAtomic)} ${asset}`} />
+              <SummaryRow label={feeLabel} value={`${formatNative(detail.feeAtomic)} ${asset}`} />
               <SummaryRow label="Size" value={`${String(detail.sizeBytes)} bytes`} />
               <SummaryRow label="Txid" value={shortHash(tx.txid)} copy={tx.txid} mono />
             </div>
@@ -207,12 +214,70 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
             </div>
           )}
 
+          {/* Slashing: the protocol itself spent a validator's conflicting
+              stake outputs — no signatures involved; the remainder returns to
+              the owners. The fee row above IS the penalty. */}
+          {detail?.txType === 5 && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <SummaryRow label="Slashing" value="Validator equivocation penalty" first />
+              <SummaryRow label="Penalty" value={`${formatNative(detail.feeAtomic)} ${asset}`} />
+              <SummaryRow label="Inputs" value={`${String(detail.inputs.length)} · protocol-authorized, no signatures`} />
+              <SummaryRow label="Returned" value={`${String(detail.outputs.length)} ${detail.outputs.length === 1 ? 'output' : 'outputs'} back to the owners`} />
+            </div>
+          )}
+
+          {/* Downgrade provenance: the frozen sum and the promised source-chain
+              payout (freeze form), or the payment that completed it (burn form). */}
+          {detail?.downgradeInfo !== undefined && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              {detail.downgradeInfo.freezeTxid !== undefined ? (
+                <>
+                  <SummaryRow
+                    label="Converting to"
+                    value={`${brand.upgrade?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'}${detail.downgradeInfo.btcValueSat !== undefined ? ` · ${formatNative(detail.downgradeInfo.btcValueSat)}` : ''}`}
+                    first
+                  />
+                  {detail.downgradeInfo.btcAddress !== undefined ? (
+                    <SummaryRow label="Payout to" value={detail.downgradeInfo.btcAddress} copy={detail.downgradeInfo.btcAddress} mono />
+                  ) : detail.downgradeInfo.btcScriptPubKey !== undefined ? (
+                    <SummaryRow label="Payout script" value={shortHash(detail.downgradeInfo.btcScriptPubKey)} copy={detail.downgradeInfo.btcScriptPubKey} mono />
+                  ) : null}
+                  <SummaryRow
+                    label="Frozen output"
+                    value={`${shortHash(detail.downgradeInfo.freezeTxid)}:${String(detail.downgradeInfo.freezeVout ?? 0)}`}
+                    copy={detail.downgradeInfo.freezeTxid}
+                    mono
+                  />
+                  <SummaryRow
+                    label={`${brand.upgrade?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'} tx`}
+                    value={shortHash(detail.downgradeInfo.btcTxid)}
+                    copy={detail.downgradeInfo.btcTxid}
+                    mono
+                  />
+                </>
+              ) : (
+                <>
+                  <SummaryRow
+                    label="Payout confirmed"
+                    value={`${brand.upgrade?.sourceCoinLabel[buildNet ?? 'mainnet'] ?? 'BTC'} tx ${shortHash(detail.downgradeInfo.btcTxid)}`}
+                    copy={detail.downgradeInfo.btcTxid}
+                    mono
+                    first
+                  />
+                  {detail.downgradeInfo.btcBlockHash !== undefined && (
+                    <SummaryRow label="In block" value={shortHash(detail.downgradeInfo.btcBlockHash)} copy={detail.downgradeInfo.btcBlockHash} mono />
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {/* Advanced: header/technical detail (advanced mode only) */}
           {advanced && detail !== null && (
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-500)', marginBottom: 7 }}>Details</div>
               <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-                <SummaryRow label="Type" value={txTypeLabel(detail.txType)} first />
+                <SummaryRow label="Type" value={txTypeLabel(detail.txType, detail.txTypeName)} first />
                 {detail.isCoinbase === true && <SummaryRow label="Coinbase" value="Yes" />}
                 {detail.blockHeight !== undefined && <SummaryRow label="Block height" value={String(detail.blockHeight)} />}
                 {detail.blockPos !== undefined && <SummaryRow label="Block position" value={String(detail.blockPos)} />}
@@ -506,7 +571,7 @@ function RawHexSection({ txid }: { txid: string }) {
 }
 
 // tx_type id → human label (1 standard, 2 stake, 3 coinbase, 4 tokens).
-function txTypeLabel(t?: number): string {
+function txTypeLabel(t?: number, name?: string): string {
   switch (t) {
     case 1:
       return 'Standard'
@@ -516,7 +581,17 @@ function txTypeLabel(t?: number): string {
       return 'Coinbase'
     case 4:
       return 'Tokens'
+    case 5:
+      return 'Slashing'
+    case 6:
+      return 'Burn'
+    case 7:
+      return 'Downgrade'
+    case 8:
+      return 'Upgrade stop'
     default:
+      // A type this build does not know: show the node's own name for it.
+      if (name !== undefined) return name
       return t === undefined ? '—' : `Type ${String(t)}`
   }
 }

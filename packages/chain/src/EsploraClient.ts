@@ -21,6 +21,7 @@ import type {
   ChainTxIn,
   ChainTxOut,
   CoinbaseInfo,
+  DowngradeInfo,
   ConfirmationStatus,
   FeeEstimates,
   NodeStatus,
@@ -621,7 +622,9 @@ function parseTx(raw: RawTx): ChainTx {
     fee: bigint;
     status: ConfirmationStatus;
     isCoinbase?: boolean;
+    txTypeName?: string;
     coinbaseInfo?: CoinbaseInfo;
+    downgradeInfo?: DowngradeInfo;
   } = {
     txid: requireString(raw.txid, 'txid'),
     version: parseTxVersion(raw),
@@ -632,6 +635,7 @@ function parseTx(raw: RawTx): ChainTx {
     status: parseStatus(raw.status),
   };
   if (typeof raw.is_coinbase === 'boolean') tx.isCoinbase = raw.is_coinbase;
+  if (typeof raw.tx_type === 'string') tx.txTypeName = raw.tx_type;
   // Upgrade coinbases carry their BTC provenance. The node reports tx_hash
   // in INTERNAL byte order; reverse it into the display order explorers use.
   const ci = (raw as { coinbase_info?: unknown }).coinbase_info;
@@ -644,6 +648,38 @@ function parseTx(raw: RawTx): ChainTx {
         btcOutNum: o.out_num,
         valueSat: typeof o.value === 'number' ? BigInt(o.value) : 0n,
       };
+    }
+  }
+  // Downgrade/burn provenance. Unlike coinbase_info, the node sends these
+  // txids/hashes already in display byte order — no reversal here.
+  const di = (raw as { downgrade_info?: unknown }).downgrade_info;
+  if (typeof di === 'object' && di !== null) {
+    const o = di as {
+      freeze_txid?: unknown;
+      freeze_vout?: unknown;
+      btc_txid?: unknown;
+      btc_vout?: unknown;
+      btc_value?: unknown;
+      btc_scriptpubkey?: unknown;
+      btc_block_hash?: unknown;
+    };
+    if (typeof o.btc_txid === 'string' && o.btc_txid.length > 0) {
+      const info: {
+        btcTxid: string;
+        freezeTxid?: string;
+        freezeVout?: number;
+        btcVout?: number;
+        btcValueSat?: bigint;
+        btcScriptPubKey?: string;
+        btcBlockHash?: string;
+      } = { btcTxid: o.btc_txid };
+      if (typeof o.freeze_txid === 'string' && o.freeze_txid.length > 0) info.freezeTxid = o.freeze_txid;
+      if (o.freeze_vout !== undefined) info.freezeVout = requireInt(o.freeze_vout, 'downgrade_info.freeze_vout');
+      if (o.btc_vout !== undefined) info.btcVout = requireInt(o.btc_vout, 'downgrade_info.btc_vout');
+      if (o.btc_value !== undefined) info.btcValueSat = requireBigint(o.btc_value, 'downgrade_info.btc_value');
+      if (typeof o.btc_scriptpubkey === 'string' && o.btc_scriptpubkey.length > 0) info.btcScriptPubKey = o.btc_scriptpubkey;
+      if (typeof o.btc_block_hash === 'string' && o.btc_block_hash.length > 0) info.btcBlockHash = o.btc_block_hash;
+      tx.downgradeInfo = info;
     }
   }
   return tx;
@@ -676,6 +712,10 @@ const TX_TYPE_VERSION: Record<string, number> = {
   stake: 2,
   coinbase: 3,
   tokens: 4,
+  slashing: 5,
+  burn: 6,
+  downgrade: 7,
+  upgrade_stop: 8,
 };
 
 /**
@@ -687,9 +727,11 @@ function parseTxVersion(raw: RawTx): number {
     return requireInt(raw.version, 'version');
   }
   if (typeof raw.tx_type === 'string') {
-    const v = TX_TYPE_VERSION[raw.tx_type];
-    if (v !== undefined) return v;
-    throw new ChainError('malformed_response', `Unknown tx_type: ${raw.tx_type}`);
+    // A name this map does not know yet resolves to 0 ("unknown") instead of
+    // failing: a node that learns a new transaction type must not break
+    // history for every address such a transaction touches (slashing did
+    // exactly that before this map knew it). The raw name is kept on the tx.
+    return TX_TYPE_VERSION[raw.tx_type] ?? 0;
   }
   throw new ChainError(
     'malformed_response',

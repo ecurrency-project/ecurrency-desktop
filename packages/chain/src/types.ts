@@ -89,8 +89,14 @@ export interface ConfirmationStatus {
 
 export interface ChainTx {
   readonly txid: string;
-  /** tx_type from the node — STANDARD=1, STAKE=2, COINBASE=3, TOKENS=4. */
+  /**
+   * tx_type from the node — STANDARD=1, STAKE=2, COINBASE=3, TOKENS=4,
+   * SLASHING=5, BURN=6, DOWNGRADE=7, UPGRADE_STOP=8; 0 for a name this
+   * client does not know yet (see `txTypeName`).
+   */
   readonly version: number;
+  /** The node's raw tx_type name, kept so an unknown type stays displayable. */
+  readonly txTypeName?: string;
   /** Inputs as seen by the node (for display, not signing). */
   readonly vin: readonly ChainTxIn[];
   /** Outputs as seen by the node. */
@@ -104,6 +110,8 @@ export interface ChainTx {
   readonly isCoinbase?: boolean;
   /** Upgrade-coinbase provenance: the source-chain payment this credit stems from. */
   readonly coinbaseInfo?: CoinbaseInfo;
+  /** Downgrade/burn provenance (native → source-chain conversion). */
+  readonly downgradeInfo?: DowngradeInfo;
 }
 
 /**
@@ -111,6 +119,26 @@ export interface ChainTx {
  * the chain's lock script. `btcTxid` is in DISPLAY byte order (explorers);
  * the node reports the internal order and the client reverses it.
  */
+/**
+ * Where a downgrade is headed / how it completed. Both forms share the field
+ * name in the node's REST: a DOWNGRADE transaction carries the frozen outpoint
+ * and the promised source-chain payout; a BURN transaction carries the
+ * source-chain block that confirmed it. All txids/hashes arrive in DISPLAY
+ * byte order (the node reverses them before sending — unlike coinbase_info).
+ */
+export interface DowngradeInfo {
+  readonly btcTxid: string;
+  // Downgrade (freeze) form:
+  readonly freezeTxid?: string;
+  readonly freezeVout?: number;
+  readonly btcVout?: number;
+  /** Satoshi promised on the source chain. */
+  readonly btcValueSat?: bigint;
+  readonly btcScriptPubKey?: string;
+  // Burn form:
+  readonly btcBlockHash?: string;
+}
+
 export interface CoinbaseInfo {
   readonly btcTxid: string;
   readonly btcBlockHeight: number;

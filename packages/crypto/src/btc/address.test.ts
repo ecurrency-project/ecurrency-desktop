@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fromHex, toHex } from '../encoding/hex';
 import {
   bech32Encode,
+  btcAddressFromScriptPubKey,
   btcP2pkhAddress,
   btcP2pkhAddressForPubkey,
   decodeBtcAddress,
@@ -106,5 +107,37 @@ describe('btcP2pkhAddressForPubkey', () => {
   it('hashes a compressed pubkey through hash160', () => {
     const pubkey = fromHex('03aaeb52dd7494c361049de67cc680e83ebcbbbdbeb13637d92cd845f70308af5e');
     expect(btcP2pkhAddressForPubkey(pubkey, 'mainnet')).toBe('1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA');
+  });
+});
+
+describe('btcAddressFromScriptPubKey', () => {
+  // Every standard template must round-trip: decode an address to its
+  // scriptPubKey, then recover the same address from the script.
+  const roundtrip = (address: string, network: 'mainnet' | 'testnet' = 'mainnet'): void => {
+    const { scriptPubKey } = decodeBtcAddress(address, network);
+    expect(btcAddressFromScriptPubKey(scriptPubKey, network)).toBe(address);
+  };
+
+  it('recovers P2PKH addresses', () => {
+    roundtrip('1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA');
+  });
+
+  it('recovers P2SH addresses', () => {
+    roundtrip('3P14159f73E4gFr7JterCCQh9QjiTjiZrG');
+  });
+
+  it('recovers segwit v0 addresses', () => {
+    roundtrip('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+  });
+
+  it('encodes per network', () => {
+    const { scriptPubKey } = decodeBtcAddress('1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA', 'mainnet');
+    const testnetAddr = btcAddressFromScriptPubKey(scriptPubKey, 'testnet');
+    expect(testnetAddr !== undefined && (testnetAddr.startsWith('m') || testnetAddr.startsWith('n'))).toBe(true);
+  });
+
+  it('returns undefined for a nonstandard script', () => {
+    expect(btcAddressFromScriptPubKey(fromHex('6a20aabb'), 'mainnet')).toBeUndefined();
+    expect(btcAddressFromScriptPubKey(new Uint8Array(0), 'mainnet')).toBeUndefined();
   });
 });
