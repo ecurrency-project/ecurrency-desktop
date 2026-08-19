@@ -585,7 +585,9 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '7px 10px', borderRadius: 8, background: 'color-mix(in srgb, var(--warning) 13%, transparent)', fontSize: 12, fontWeight: 500, color: 'var(--warning)' }}>
-                    <AlertIcon size={14} />
+                    <span style={{ flex: 'none', display: 'flex' }}>
+                      <AlertIcon size={16} />
+                    </span>
                     Not in your contacts — double-check every character before sending.
                   </div>
                 )}

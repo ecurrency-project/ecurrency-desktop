@@ -1,12 +1,12 @@
 import { QRCodeSVG } from 'qrcode.react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { UpgradePlanView, UpgradeStatusView } from '../../shared/protocol'
+import type { DowngradeEpisodeIpcView, DowngradePlanView, UpgradePlanView, UpgradeStatusView } from '../../shared/protocol'
 import { brand } from '../brand'
 import { formatToken } from '../lib/format'
 import { wallet } from '../lib/wallet'
 import { assetLabelFor } from '../brand/labels'
-import { useAddressPlaceholder, useBuildNetwork } from '../lib/walletData'
-import { AlertIcon, Button, CheckIcon, CopyIcon, Screen, TextField } from '../ui'
+import { useAddressPlaceholder, useBuildNetwork, useCoins } from '../lib/walletData'
+import { AlertIcon, Button, CheckIcon, CopyIcon, CopyValue, Screen, Segmented, TextField } from '../ui'
 
 // Convert: the source-chain → native upgrade flow (design:
 // docs/btc-upgrade-design.md §4.1). Deposit to your own staging address →
@@ -16,6 +16,16 @@ import { AlertIcon, Button, CheckIcon, CopyIcon, Screen, TextField } from '../ui
 // screen only renders views.
 
 const SAT_DECIMALS = 8
+
+/** Light client-side shape check for a source-chain address (main re-validates
+ *  strictly on submit): legacy base58 or bech32 with the right network prefix. */
+function btcAddrLooksValid(address: string, net: 'mainnet' | 'testnet' | null): boolean {
+  const a = address.trim()
+  if (a === '') return false
+  return net === 'testnet'
+    ? /^[mn2][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) || /^tb1[02-9ac-hj-np-z]{8,87}$/i.test(a)
+    : /^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) || /^bc1[02-9ac-hj-np-z]{8,87}$/i.test(a)
+}
 
 function fmtSat(sat: string): string {
   return formatToken(sat, SAT_DECIMALS)
@@ -61,12 +71,38 @@ export function Convert() {
   const [returnAddr, setReturnAddr] = useState('')
   const [returnResult, setReturnResult] = useState<string | null>(null)
 
+  // Downgrade (native → source chain) state. The direction toggle renders only
+  // when main reports the flow (brand DOWNGRADE params + a seed wallet).
+  const [direction, setDirection] = useState<'up' | 'down'>('up')
+  const [downEnabled, setDownEnabled] = useState(false)
+  const [downEpisodes, setDownEpisodes] = useState<readonly DowngradeEpisodeIpcView[]>([])
+  const [downAmount, setDownAmount] = useState('')
+  const [downAddr, setDownAddr] = useState('')
+  const [downStage, setDownStage] = useState<Stage>('form')
+  const [downPlan, setDownPlan] = useState<DowngradePlanView | null>(null)
+  const [downTxid, setDownTxid] = useState('')
+  const [downError, setDownError] = useState<string | null>(null)
+  const [downBusy, setDownBusy] = useState(false)
+  const [reclaiming, setReclaiming] = useState<string | null>(null)
+
   const refresh = useCallback(() => {
+    // "Not available on this wallet" is a normal state (key/watch wallets),
+    // not an error banner: probe the capability first and only then fetch
+    // the status, so real failures still surface.
     wallet
-      .upgradeStatus()
-      .then((s) => {
-        setStatus(s)
-        setLoadError(null)
+      .upgradeInfo()
+      .then((info) => {
+        if (!info.enabled) {
+          setStatus(null)
+          setLoadError(null)
+          return
+        }
+        return wallet
+          .upgradeStatus()
+          .then((s) => {
+            setStatus(s)
+            setLoadError(null)
+          })
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)))
     // The node ignores upgrade transactions until its BTC chain is synced,
@@ -86,6 +122,10 @@ export function Convert() {
         ),
       )
       .catch(() => setBtcSync(null))
+    wallet
+      .downgradeStatus()
+      .then(setDownEpisodes)
+      .catch(() => {}) // disabled on this wallet/brand — the toggle stays hidden
   }, [])
 
   // Load status + prefill the destination with the wallet's own receive
@@ -97,6 +137,10 @@ export function Convert() {
     wallet
       .getReceiveAddress()
       .then((a) => setDest((d) => (d === '' ? a : d)))
+      .catch(() => {})
+    wallet
+      .downgradeInfo()
+      .then((i) => setDownEnabled(i.enabled))
       .catch(() => {})
     return () => clearInterval(timer)
   }, [refresh])
@@ -147,6 +191,59 @@ export function Convert() {
     }
   }
 
+  const downAddrLooksValid = btcAddrLooksValid(downAddr, buildNet)
+
+  // What the downgrade can spend — the same "available" the Send screen
+  // shows: unfrozen native coins (the network fee still comes out of it).
+  const { data: coinsData } = useCoins()
+  const downAvailable = useMemo(
+    () => (coinsData ?? []).filter((c) => !c.frozen && c.tokenId === undefined).reduce((sum, c) => sum + BigInt(c.valueAtomic), 0n),
+    [coinsData],
+  )
+
+  const downReview = async (): Promise<void> => {
+    setDownBusy(true)
+    setDownError(null)
+    try {
+      setDownPlan(await wallet.downgradePlan(toSat(downAmount)))
+      setDownStage('review')
+    } catch (e) {
+      setDownError((e as Error).message)
+    } finally {
+      setDownBusy(false)
+    }
+  }
+
+  const downConfirm = async (): Promise<void> => {
+    setDownBusy(true)
+    setDownError(null)
+    setDownStage('sending')
+    try {
+      const res = await wallet.downgradeConvert(toSat(downAmount), downAddr.trim())
+      setDownTxid(res.txid)
+      setDownStage('done')
+      refresh()
+    } catch (e) {
+      setDownError((e as Error).message)
+      setDownStage('review')
+    } finally {
+      setDownBusy(false)
+    }
+  }
+
+  const doReclaim = async (freezeTxid: string): Promise<void> => {
+    setReclaiming(freezeTxid)
+    setDownError(null)
+    try {
+      await wallet.downgradeReclaim(freezeTxid)
+      refresh()
+    } catch (e) {
+      setDownError((e as Error).message)
+    } finally {
+      setReclaiming(null)
+    }
+  }
+
   const copyAddress = (): void => {
     if (status === null) return
     void navigator.clipboard.writeText(status.stagingAddress)
@@ -186,15 +283,7 @@ export function Convert() {
     return minSat !== null ? `Minimum ${fromSat(minSat)} ${src}` : null
   })()
 
-  // Light client-side shape check for the Return address (main re-validates
-  // strictly on submit): legacy base58 or bech32 with the right network prefix.
-  const returnAddrLooksValid = useMemo(() => {
-    const a = returnAddr.trim()
-    if (a === '') return false
-    return buildNet === 'testnet'
-      ? /^[mn2][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) || /^tb1[02-9ac-hj-np-z]{8,87}$/i.test(a)
-      : /^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(a) || /^bc1[02-9ac-hj-np-z]{8,87}$/i.test(a)
-  }, [returnAddr, buildNet])
+  const returnAddrLooksValid = useMemo(() => btcAddrLooksValid(returnAddr, buildNet), [returnAddr, buildNet])
 
   return (
     <Screen center>
@@ -206,7 +295,9 @@ export function Convert() {
             role="status"
             style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--card)', border: '1px solid var(--warning)', borderRadius: 12, padding: '12px 14px', fontSize: 12.5, color: 'var(--ink-700)', lineHeight: 1.5 }}
           >
-            <AlertIcon size={16} />
+            <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
+              <AlertIcon size={16} />
+            </span>
             <span>
               {btcSync?.synced === false
                 ? `The ${nativeLabel} node is still syncing the ${src} chain. You can deposit and convert now, but the network will only credit conversions after that sync completes — expect a delay.`
@@ -215,6 +306,22 @@ export function Convert() {
           </div>
         )}
 
+        {/* Both directions ship on this brand: BTC→native (upgrade) and
+            native→BTC (downgrade). One toggle, two independent flows. */}
+        {downEnabled && (
+          <Segmented
+            ariaLabel="Conversion direction"
+            value={direction}
+            onChange={(d) => setDirection(d)}
+            options={[
+              { value: 'up' as const, label: `${src} → ${nativeLabel}` },
+              { value: 'down' as const, label: `${nativeLabel} → ${src}` },
+            ]}
+          />
+        )}
+
+        {direction === 'up' && (
+          <>
         {/* Deposit */}
         <section style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>1 · Deposit {src}</div>
@@ -294,7 +401,7 @@ export function Convert() {
               />
               <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: 'var(--well)', border: '1px solid var(--border)' }}>
                 <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
-                  <AlertIcon size={15} />
+                  <AlertIcon size={16} />
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>
                   Conversion is one-way and cannot be undone. The {nativeLabel} amount follows the protocol rate at
@@ -340,7 +447,10 @@ export function Convert() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--success)', fontSize: 14, fontWeight: 600 }}>
                 <CheckIcon size={18} /> Conversion transaction sent
               </div>
-              <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-700)', wordBreak: 'break-all' }}>{txid}</code>
+              <CopyValue
+                text={txid}
+                style={{ display: 'block', padding: '8px 10px', borderRadius: 8, background: 'var(--well)', border: '1px solid var(--border)', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-900)', wordBreak: 'break-all' }}
+              />
               <div style={{ fontSize: 12.5, color: 'var(--ink-500)', lineHeight: 1.5 }}>
                 {nativeLabel} will appear on your address after the {src} transaction has 6 confirmations plus a
                 ~2 hour protocol delay (typically ~3 hours in total). Track it below. The deposit address in step 1 is
@@ -373,7 +483,10 @@ export function Convert() {
                   <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>
                     {fmtSat(e.lockValueSat)} {src}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.txid}</div>
+                  <CopyValue
+                    text={e.txid}
+                    style={{ display: 'block', fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  />
                 </div>
                 <span style={{ fontSize: 11.5, color: e.confirmed ? 'var(--ink-500)' : 'var(--warning)', flex: 'none' }}>
                   {e.confirmed
@@ -409,7 +522,7 @@ export function Convert() {
             </button>
           ) : returnResult !== null ? (
             <div style={{ fontSize: 12.5, color: 'var(--success)' }}>
-              Returned — txid <code style={{ fontFamily: 'var(--mono)' }}>{returnResult}</code>
+              Returned — txid <CopyValue text={returnResult} style={{ fontFamily: 'var(--mono)' }} />
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
@@ -431,9 +544,193 @@ export function Convert() {
             </div>
           )}
         </section>
+          </>
+        )}
+
+        {direction === 'down' && (
+          <>
+            {/* Compose the downgrade: amount + destination, then a review with
+                the estimated payout. The estimate is honest about being one —
+                the node fixes the real rate when the conversion confirms. */}
+            <section style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>1 · Convert {nativeLabel} to {src}</div>
+                <span style={{ fontSize: 13, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-700)' }}>
+                  {fmtSat(downAvailable.toString())} {nativeLabel}
+                </span>
+                <span style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>available</span>
+              </div>
+
+              {downStage === 'form' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+                  <TextField
+                    label={`Amount (${nativeLabel})`}
+                    mono
+                    value={downAmount}
+                    onChange={(e) => setDownAmount(e.target.value)}
+                    placeholder="0.0"
+                    aria-label={`Amount in ${nativeLabel}`}
+                    hint={downAvailable > 0n ? `Up to ${fmtSat(downAvailable.toString())} ${nativeLabel} spendable (the network fee comes out of it).` : undefined}
+                  />
+                  <TextField
+                    label={`Receive to (${src} address)`}
+                    mono
+                    value={downAddr}
+                    onChange={(e) => setDownAddr(e.target.value)}
+                    placeholder={`${src} address`}
+                    aria-label="BTC destination address"
+                    state={downAddr.trim() !== '' && !downAddrLooksValid ? 'error' : 'default'}
+                    hint={downAddr.trim() !== '' && !downAddrLooksValid ? `That does not look like a ${buildNet ?? 'mainnet'} ${src} address.` : undefined}
+                  />
+                  {downError !== null && <div className="field-hint field-hint--error">{downError}</div>}
+                  <Button disabled={downBusy || downAmount.trim() === '' || !downAddrLooksValid} onClick={() => void downReview()}>
+                    {downBusy ? 'Preparing…' : 'Review'}
+                  </Button>
+                </div>
+              )}
+
+              {downStage === 'review' && downPlan !== null && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                  <Row label="Converting" value={`${fmtSat(downPlan.amountAtomic)} ${nativeLabel}`} mono />
+                  <Row label="To" value={downAddr.trim()} mono />
+                  <Row label="Network fee" value={`${fmtSat(downPlan.feeAtomic)} ${nativeLabel}`} mono />
+                  <Row label="You receive" value={`≈ ${fmtSat(downPlan.estimatedBtcSat)} ${src}`} mono strong />
+                  <div style={{ fontSize: 12, color: 'var(--ink-500)', lineHeight: 1.5 }}>
+                    The estimate is after the 1% conversion-service fee; the exact rate is fixed on chain when the
+                    service picks the conversion up. If nothing picks it up within 48 hours, you can reclaim the
+                    {' '}{nativeLabel} below.
+                  </div>
+                  <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: 'var(--well)', border: '1px solid var(--border)' }}>
+                    <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
+                      <AlertIcon size={16} />
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.5 }}>
+                      Once the service picks it up, the conversion is one-way and cannot be undone.
+                    </span>
+                  </div>
+                  {downError !== null && <div className="field-hint field-hint--error">{downError}</div>}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <Button variant="secondary" style={{ flex: 1 }} disabled={downBusy} onClick={() => setDownStage('form')}>
+                      Back
+                    </Button>
+                    <Button style={{ flex: 1 }} disabled={downBusy} onClick={() => void downConfirm()}>
+                      Convert
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {downStage === 'sending' && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '28px 0 12px' }}>
+                  <span className="spinner" aria-label="Sending" />
+                  <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink-500)' }}>Signing and broadcasting…</div>
+                </div>
+              )}
+
+              {downStage === 'done' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--success)', fontSize: 14, fontWeight: 600 }}>
+                    <CheckIcon size={16} />
+                    Conversion started
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink-500)', lineHeight: 1.5 }}>
+                    The {nativeLabel} is frozen for the conversion service. The {src} payout appears in the list below
+                    once the service commits to it.
+                  </div>
+                  <CopyValue
+                    text={downTxid}
+                    style={{ display: 'block', padding: '8px 10px', borderRadius: 8, background: 'var(--well)', border: '1px solid var(--border)', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-900)', wordBreak: 'break-all' }}
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setDownStage('form')
+                      setDownAmount('')
+                      setDownPlan(null)
+                    }}
+                  >
+                    New conversion
+                  </Button>
+                </div>
+              )}
+            </section>
+
+            {/* Downgrade episodes */}
+            <section style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 20px', fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>2 · Conversions to {src}</div>
+              {downEpisodes.length === 0 ? (
+                <div style={{ padding: '0 20px 18px', fontSize: 13, color: 'var(--ink-500)' }}>No conversions to {src} from this wallet yet.</div>
+              ) : (
+                downEpisodes.map((e) => (
+                  <div key={e.freezeTxid} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', borderTop: '1px solid var(--border)' }}>
+                    <span style={{ width: 7, height: 7, flex: 'none', borderRadius: '50%', background: DOWN_STATE_COLOR[e.state] }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-900)' }}>
+                        {fmtSat(e.valueAtomic)} {nativeLabel}
+                        {e.btcAddress !== undefined && (
+                          <span style={{ fontWeight: 400, color: 'var(--ink-500)' }}> → {e.btcAddress.slice(0, 10)}…</span>
+                        )}
+                      </div>
+                      <CopyValue
+                        text={e.freezeTxid}
+                        style={{ display: 'block', fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                      />
+                    </div>
+                    <span style={{ fontSize: 11.5, color: 'var(--ink-500)', flex: 'none' }}>{downStateText(e)}</span>
+                    {e.state === 'reclaimable' && (
+                      <Button variant="secondary" size="sm" disabled={reclaiming !== null} onClick={() => void doReclaim(e.freezeTxid)}>
+                        {reclaiming === e.freezeTxid ? 'Reclaiming…' : 'Reclaim'}
+                      </Button>
+                    )}
+                    {e.btcTxid !== undefined && explorerTxBase !== null && (
+                      <button
+                        type="button"
+                        className="content-refresh"
+                        style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}
+                        onClick={() => window.open(`${explorerTxBase}${e.btcTxid ?? ''}`, '_blank', 'noopener')}
+                      >
+                        {src} tx
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+              {downError !== null && direction === 'down' && (
+                <div className="field-hint field-hint--error" style={{ padding: '0 20px 14px' }}>{downError}</div>
+              )}
+            </section>
+          </>
+        )}
       </div>
     </Screen>
   )
+}
+
+// Episode-state presentation: a dot colour and a short line. "Reclaimable"
+// is the only state that needs the user; everything else is just waiting.
+const DOWN_STATE_COLOR: Record<DowngradeEpisodeIpcView['state'], string> = {
+  frozen: 'var(--warning)',
+  converting: 'var(--warning)',
+  paid: 'var(--success)',
+  reclaimable: 'var(--danger)',
+  reclaimed: 'var(--ink-300)',
+}
+
+function downStateText(e: DowngradeEpisodeIpcView): string {
+  switch (e.state) {
+    case 'frozen': {
+      const eta = e.reclaimableAt !== undefined ? Math.max(0, Math.ceil((e.reclaimableAt - Date.now() / 1000) / 3600)) : null
+      return eta !== null ? `waiting for the service · reclaim in ${String(eta)}h` : 'waiting for the service'
+    }
+    case 'converting':
+      return 'converting…'
+    case 'paid':
+      return 'paid'
+    case 'reclaimable':
+      return 'stalled'
+    case 'reclaimed':
+      return 'reclaimed'
+  }
 }
 
 function Row({ label, value, mono = false, strong = false }: { label: string; value: string; mono?: boolean; strong?: boolean }) {

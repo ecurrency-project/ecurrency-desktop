@@ -6,7 +6,7 @@ import { useAdvancedMode } from '../lib/prefs'
 import { disassembleScript } from '../lib/script'
 import { assetLabelFor } from '../brand/labels'
 import { loadTxDetail, loadTxRaw, saveTxLabel, useAssetLabel, useBuildNetwork, useTokens } from '../lib/walletData'
-import { ChevDownIcon, CloseIcon, CopyIcon, ExternalIcon, PencilIcon } from '../ui'
+import { ChevDownIcon, CloseIcon, CopyIcon, CopyValue, ExternalIcon, PencilIcon } from '../ui'
 import { TxTypeBadge } from './TxTypeBadge'
 
 // Block explorer the "Explorer" button opens (brand-configured; hidden when the
@@ -425,32 +425,6 @@ function SummaryRow({ label, value, mono = false, first = false, copy }: { label
 // goes to the clipboard on click. Identifiers are dead ends otherwise —
 // shortHash() puts the ellipsized string in the DOM, so selecting the text
 // would only ever copy "961b9c67…c5f1b5".
-function CopyValue({ text, display, style }: { text: string; display?: string; style?: CSSProperties }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      title={copied ? 'Copied' : `${text}\n(click to copy)`}
-      onClick={() => {
-        void navigator.clipboard.writeText(text)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1200)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          void navigator.clipboard.writeText(text)
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1200)
-        }
-      }}
-      style={{ ...style, cursor: 'pointer', color: copied ? 'var(--success)' : style?.color }}
-    >
-      {copied ? 'Copied' : (display ?? text)}
-    </span>
-  )
-}
 
 // Per-input/output technical detail, shown under each row in advanced mode: the
 // outpoint an input spends, its signature scheme, the scripthash, and the redeem

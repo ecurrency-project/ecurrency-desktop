@@ -206,7 +206,7 @@ export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () 
             )}
             <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', border: '1px solid var(--border)', background: 'var(--well)', borderRadius: 12, padding: '10px 12px' }}>
               <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
-                <AlertIcon size={15} />
+                <AlertIcon size={16} />
               </span>
               <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>
                 Your recovery phrase does <strong>not</strong> back up this wallet — keep a separate backup of the key itself. Anyone holding the key can spend these funds.
