@@ -2,6 +2,7 @@
 export { Button, type ButtonSize, type ButtonVariant } from './Button'
 export { ContactDialog } from './ContactDialog'
 export { Modal } from './Modal'
+export { CopyValue } from './CopyValue'
 export { Pill, type PillTone } from './Pill'
 export { Segmented, type SegmentedOption } from './Segmented'
 export { Switch } from './Switch'

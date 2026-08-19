@@ -4,7 +4,7 @@ import { brand } from '../brand'
 import { WalletSwitcher } from '../components/WalletSwitcher'
 import { wallet } from '../lib/wallet'
 import { assetLabelFor } from '../brand/labels'
-import { hydrateFromSnapshot, loadWallets, networkLabel, nodeDotColor, refreshAll, useBuildNetwork, useNodeStatus } from '../lib/walletData'
+import { hydrateFromSnapshot, loadWallets, networkLabel, nodeDotColor, refreshAll, useActiveWallet, useBuildNetwork, useNodeStatus } from '../lib/walletData'
 import { ActivityIcon, AtomIcon, BoltIcon, ChevDownIcon, CoinsIcon, LockIcon, ReceiveIcon, RefreshIcon, SendIcon, SettingsIcon, Sidebar, WalletIcon, type NavItem } from '../ui'
 import { Activity } from './Activity'
 import { Coins } from './Coins'
@@ -72,6 +72,7 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
   // Convert is double-gated: the brand must ship an upgrade flow (static) and
   // main must confirm it for the active wallet (seed wallets only).
   const [convertEnabled, setConvertEnabled] = useState(false)
+  const activeWalletId = useActiveWallet()?.id
   useEffect(() => {
     if (brand.upgrade === null) return
     let alive = true
@@ -84,7 +85,10 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
     return () => {
       alive = false
     }
-  }, [])
+    // Re-probe when the active wallet changes: the flow is per wallet (a
+    // watch or key wallet has none), and a stale gate left Convert reachable
+    // after a switch.
+  }, [activeWalletId])
   const navItems = convertEnabled ? [...NAV.slice(0, 3), CONVERT_NAV, ...NAV.slice(3)] : NAV
   useEffect(() => {
     if (!convertEnabled && nav === 'convert') setNav('wallet')

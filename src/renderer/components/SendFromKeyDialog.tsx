@@ -234,7 +234,7 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
             {emptyBalance ? (
               <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', border: '1px solid var(--border)', background: 'var(--well)', borderRadius: 12, padding: '10px 12px' }}>
                 <span style={{ flex: 'none', color: 'var(--warning)', display: 'flex', marginTop: 1 }}>
-                  <AlertIcon size={15} />
+                  <AlertIcon size={16} />
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--ink-700)', lineHeight: 1.55 }}>Nothing to send — this key holds no spendable {asset}. Close to finish; the key will be wiped from memory.</span>
               </div>
