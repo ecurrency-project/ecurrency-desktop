@@ -9,7 +9,7 @@
 //
 // All multi-byte numeric fields are little-endian.
 
-import { SIGHASH } from './constants';
+import { SIGHASH, SIGHASH_COMMITS_TOKEN_ID } from './constants';
 import { encodeVarint } from './encoding/varint';
 import { encodeVarstr } from './encoding/varstr';
 import { hash256 } from './hashes';
@@ -117,6 +117,14 @@ export function serializeForSighash(
   for (const output of tx.outputs) {
     parts.push(serializeOutput(output));
   }
+  // On brands whose node commits it (SIGHASH_COMMITS_TOKEN_ID), a token
+  // transfer signs its token id too — appended RAW (32 bytes, no varstr
+  // prefix, unlike the wire form), after the outputs. Without it a signature
+  // would be valid for the same movement of ANY token; older nodes instead
+  // REJECT sign data that includes it, hence the per-brand gate.
+  if (SIGHASH_COMMITS_TOKEN_ID && tx.txType === TX_TYPE_TOKENS) {
+    parts.push(tokenHashPrefix(tx.tokenHash));
+  }
   return concat(parts);
 }
 
@@ -156,8 +164,9 @@ export function serialize(tx: Transaction): Uint8Array {
   const parts: Uint8Array[] = [];
   parts.push(new Uint8Array([tx.txType]));
   // Token transfers carry a varstr(token_hash) prefix right after the type
-  // byte (wire serialization). The sighash deliberately omits it, so it
-  // lives here and NOT in serializeForSighash.
+  // byte on the wire; the sighash appends the RAW hash after the outputs
+  // instead — and only on brands whose node commits it (see
+  // serializeForSighash and SIGHASH_COMMITS_TOKEN_ID).
   if (tx.txType === TX_TYPE_TOKENS) {
     parts.push(encodeVarstr(tokenHashPrefix(tx.tokenHash)));
   }
