@@ -50,6 +50,8 @@ export interface DowngradeChainReader {
   getOutspend(txid: string, vout: number): Promise<Outspend>
   getNodeStatus(): Promise<{ totalCoins?: bigint }>
   broadcastTransaction(rawHex: string): Promise<{ txid: string }>
+  /** Unspent outputs of an address (the covenant addresses, for rescan). */
+  listUnspent(address: string): Promise<readonly { txid: string; vout: number; value: bigint }[]>
 }
 
 /** One recorded conversion (persisted sealed; the chain is the source of
@@ -74,6 +76,17 @@ export interface DowngradeStore {
   save(episodes: readonly DowngradeEpisodeRecord[]): Promise<void>
 }
 
+/** One key the wallet could reclaim with, and the covenant reclaim id it
+ *  would appear under (hash256(pubkey), hex) in a conversion output's data. */
+export interface ReclaimKeyCell {
+  readonly account: number
+  readonly chain: 0 | 1
+  readonly index: number
+  readonly algo: 'ecdsa' | 'falcon512'
+  readonly scheme?: string
+  readonly reclaimIdHex: string
+}
+
 /** Wallet capabilities the service borrows from the session (main only). */
 export interface DowngradeWallet {
   /** Spendable pool for coin selection (native, unfrozen). */
@@ -81,6 +94,11 @@ export interface DowngradeWallet {
   /** The freeze address (the freeze scripthash, address-encoded) — buildSend
    *  decodes it back; keeps the service off the address codec. */
   freezeAddress(): string
+  /** The downgrade-covenant address (second conversion stage), for rescan. */
+  downgradeAddress(): string
+  /** Every key the wallet can reclaim with (issued cells plus a lookahead),
+   *  with its reclaim id. Deriving PQ cells is expensive — callers ask once. */
+  reclaimKeyCells(): Promise<readonly ReclaimKeyCell[]>
   /** Fresh change / reclaim destination for a branch. */
   changeAddressFor(algo: 'ecdsa' | 'falcon512'): Promise<string>
   /** Fee rate in atomic units per vByte. */
@@ -145,6 +163,11 @@ export function estimateBtcForDowngrade(valueAtomic: bigint, level: number): big
 const BTC_DUST_SAT = 546n
 
 export class DowngradeService {
+  /** Covenant outpoints resolved this session as not-ours or already covered:
+   *  skipped by later rescans so foreign conversions aren't refetched on
+   *  every refresh. Session-only — a restart re-evaluates everything. */
+  private readonly settledOutpoints = new Set<string>()
+
   constructor(
     private readonly params: DowngradeParams,
     private readonly reader: DowngradeChainReader,
@@ -217,10 +240,77 @@ export class DowngradeService {
 
   /** Every recorded episode with its live chain state, newest first. */
   async status(): Promise<DowngradeEpisodeView[]> {
+    // Best-effort discovery first: the journal must still render when the
+    // chain is unreachable, and a failed scan simply retries next refresh.
+    await this.rescan().catch(() => {})
     const episodes = await this.store.load()
     const now = Math.floor(Date.now() / 1000)
     const views = await Promise.all(episodes.map((e) => this.episodeView(e, now)))
     return views.reverse()
+  }
+
+  /**
+   * Discover conversions the local journal doesn't know: unspent covenant
+   * outputs whose reclaim id is hash256 of one of OUR keys. This is what
+   * makes episodes survive a seed restore on another device — and it also
+   * finds freezes built by other apps on the same seed, since conventions
+   * differ only in WHICH key they commit (our first input, a fixed cell
+   * elsewhere) and the match runs over every derived cell. Spent covenant
+   * outputs (completed conversions) are not rediscovered: nothing is
+   * actionable there, and history shows them anyway.
+   */
+  async rescan(): Promise<number> {
+    const [freezeUtxos, downgradeUtxos] = await Promise.all([
+      this.reader.listUnspent(this.wallet.freezeAddress()),
+      this.reader.listUnspent(this.wallet.downgradeAddress()),
+    ])
+    const episodes = await this.store.load()
+    const known = new Set(episodes.map((e) => `${e.freezeTxid}:${String(e.vout)}`))
+    // The cell map derives lazily: each PQ cell costs a WASM keygen, and on a
+    // covenant with no unknown outputs a refresh should pay nothing.
+    let cells: Map<string, ReclaimKeyCell> | null = null
+    const cellFor = async (reclaimId: string): Promise<ReclaimKeyCell | undefined> => {
+      if (cells === null) {
+        cells = new Map()
+        for (const cell of await this.wallet.reclaimKeyCells()) {
+          cells.set(cell.reclaimIdHex.toLowerCase(), cell)
+        }
+      }
+      return cells.get(reclaimId.toLowerCase())
+    }
+
+    const additions: DowngradeEpisodeRecord[] = []
+    for (const u of freezeUtxos) {
+      const key = `${u.txid}:${String(u.vout)}`
+      if (known.has(key) || this.settledOutpoints.has(key)) continue
+      const record = await this.freezeEpisodeOf(u, cellFor)
+      if (record === undefined) {
+        this.settledOutpoints.add(key)
+        continue
+      }
+      additions.push(record)
+      known.add(key)
+    }
+    for (const u of downgradeUtxos) {
+      const key = `${u.txid}:${String(u.vout)}`
+      if (this.settledOutpoints.has(key)) continue
+      const record = await this.downgradeEpisodeOf(u, cellFor)
+      if (record === undefined) {
+        this.settledOutpoints.add(key)
+        continue
+      }
+      const freezeKey = `${record.freezeTxid}:${String(record.vout)}`
+      // Either way this output needs no second look: the journal entry (an
+      // existing one, or the one added right here) walks to it via outspends.
+      this.settledOutpoints.add(key)
+      if (known.has(freezeKey)) continue
+      additions.push(record)
+      known.add(freezeKey)
+    }
+    if (additions.length > 0) {
+      await this.store.save([...episodes, ...additions])
+    }
+    return additions.length
   }
 
   /** Reclaim a matured freeze/downgrade output back to the wallet. */
@@ -275,6 +365,70 @@ export class DowngradeService {
 
   private freezeScripthashBytes(): Uint8Array {
     return reclaimScripthash(freezeScript(this.params.lockPubkey, this.params.freezeSeconds))
+  }
+
+  /** An unknown freeze UTXO → episode record, or undefined when it is
+   *  definitively not ours / not decodable. Transient errors propagate. */
+  private async freezeEpisodeOf(
+    u: { txid: string; vout: number; value: bigint },
+    cellFor: (reclaimId: string) => Promise<ReclaimKeyCell | undefined>,
+  ): Promise<DowngradeEpisodeRecord | undefined> {
+    const out = (await this.reader.getTransaction(u.txid)).vout[u.vout]
+    const reclaimId = out?.downgrade?.reclaimId
+    const btcAddress = out?.downgrade?.btcAddress
+    if (reclaimId === undefined || btcAddress === undefined) return undefined
+    const cell = await cellFor(reclaimId)
+    if (cell === undefined) return undefined
+    let spk: Uint8Array
+    try {
+      spk = decodeBtcAddress(btcAddress, this.params.btcNetwork).scriptPubKey
+    } catch {
+      return undefined
+    }
+    return {
+      freezeTxid: u.txid,
+      vout: u.vout,
+      valueAtomic: u.value.toString(),
+      btcScriptPubKeyHex: toHex(spk),
+      reclaim: reclaimBranchOf(cell),
+    }
+  }
+
+  /** An unknown UTXO on the DOWNGRADE covenant (the freeze is already spent
+   *  into the service's downgrade tx) → episode record keyed by the ORIGINAL
+   *  freeze outpoint — the state machine walks the chain from there and lands
+   *  back on this output. Undefined when definitively not ours. */
+  private async downgradeEpisodeOf(
+    u: { txid: string; vout: number; value: bigint },
+    cellFor: (reclaimId: string) => Promise<ReclaimKeyCell | undefined>,
+  ): Promise<DowngradeEpisodeRecord | undefined> {
+    const dTx = await this.reader.getTransaction(u.txid)
+    const info = dTx.downgradeInfo
+    if (info?.freezeTxid === undefined || info.freezeVout === undefined) return undefined
+    const reclaimId = dTx.vout[u.vout]?.downgrade?.reclaimId
+    if (reclaimId === undefined) return undefined
+    const cell = await cellFor(reclaimId)
+    if (cell === undefined) return undefined
+    const frozen = (await this.reader.getTransaction(info.freezeTxid)).vout[info.freezeVout]
+    if (frozen === undefined) return undefined
+    return {
+      freezeTxid: info.freezeTxid,
+      vout: info.freezeVout,
+      valueAtomic: frozen.value.toString(),
+      // The downgrade tx commits the payout scriptPubKey directly; the freeze
+      // output's decoded address is the fallback for display.
+      btcScriptPubKeyHex: info.btcScriptPubKey ?? this.spkHexOfBtcAddress(frozen.downgrade?.btcAddress) ?? '',
+      reclaim: reclaimBranchOf(cell),
+    }
+  }
+
+  private spkHexOfBtcAddress(address: string | undefined): string | undefined {
+    if (address === undefined) return undefined
+    try {
+      return toHex(decodeBtcAddress(address, this.params.btcNetwork).scriptPubKey)
+    } catch {
+      return undefined
+    }
   }
 
   private async buildFreezeDraft(utxos: readonly SpendableUtxo[], amountAtomic: bigint): Promise<BuiltSend> {
@@ -364,5 +518,16 @@ export class DowngradeService {
     } catch {
       return {}
     }
+  }
+}
+
+/** The episode's reclaim derivation for a matched cell. */
+function reclaimBranchOf(cell: ReclaimKeyCell): DowngradeEpisodeRecord['reclaim'] {
+  return {
+    account: cell.account,
+    chain: cell.chain,
+    index: cell.index,
+    algo: cell.algo,
+    ...(cell.scheme !== undefined ? { scheme: cell.scheme } : {}),
   }
 }

@@ -105,6 +105,12 @@ export class AddressService {
     })
   }
 
+  /** The active scheme's issued-index floors, read-only — lets callers
+   *  enumerate every cell the wallet has handed out (e.g. covenant rescans). */
+  async issuedIndices(): Promise<SchemeIndices> {
+    return this.activeIndices()
+  }
+
   private async ensureMeta(): Promise<WalletMeta> {
     if (this.meta === null) this.meta = await this.metaStore.load()
     return this.meta

@@ -7,6 +7,7 @@ import {
   levelByTotal,
   type DowngradeEpisodeRecord,
   type DowngradeWallet,
+  type ReclaimKeyCell,
 } from '../../src/main/wallet/DowngradeService'
 import type { SpendableUtxo, UnsignedTx } from '../../src/main/wallet/buildTx'
 
@@ -21,6 +22,7 @@ const RECLAIM_PUB = getPublicKey(RECLAIM_PRIV)
 const BTC_SPK_HEX = '76a914' + '22'.repeat(20) + '88ac'
 
 const FREEZE_ADDR = addressFromScripthash(fromHex(FREEZE_SH), 'mainnet')
+const DOWNGRADE_ADDR = addressFromScripthash(fromHex(DOWNGRADE_SH), 'mainnet')
 const CHANGE_ADDR = addressFromScripthash(fromHex('cd'.repeat(20)), 'mainnet')
 
 const now = (): number => Math.floor(Date.now() / 1000)
@@ -37,13 +39,24 @@ function makeService(over: {
   outspends?: Record<string, Outspend>
   episodes?: DowngradeEpisodeRecord[]
   totalCoins?: bigint
+  /** Unspent covenant outputs, keyed by address (freeze / downgrade). */
+  unspent?: Record<string, { txid: string; vout: number; value: bigint }[]>
+  cells?: ReclaimKeyCell[]
+  listUnspentFails?: boolean
 } = {}) {
   const broadcasts: string[] = []
   const signedDrafts: UnsignedTx[] = []
+  const txFetches: string[] = []
+  let cellCalls = 0
   let saved: readonly DowngradeEpisodeRecord[] = over.episodes ?? []
   const wallet: DowngradeWallet = {
     spendable: async () => pool(),
     freezeAddress: () => FREEZE_ADDR,
+    downgradeAddress: () => DOWNGRADE_ADDR,
+    reclaimKeyCells: async () => {
+      cellCalls += 1
+      return over.cells ?? []
+    },
     changeAddressFor: async () => CHANGE_ADDR,
     feeRate: async () => 1,
     scripthashOf: () => fromHex('cd'.repeat(20)),
@@ -58,6 +71,7 @@ function makeService(over: {
     { lockPubkey: LOCK_PUBKEY, freezeSeconds: FREEZE_SEC, outputSeconds: OUTPUT_SEC, btcNetwork: 'mainnet' },
     {
       getTransaction: async (txid) => {
+        txFetches.push(txid)
         const tx = over.txs?.[txid]
         if (tx === undefined) throw new Error(`no tx ${txid}`)
         return tx
@@ -68,6 +82,10 @@ function makeService(over: {
         broadcasts.push(rawHex)
         return { txid: 'b0'.repeat(32) }
       },
+      listUnspent: async (address) => {
+        if (over.listUnspentFails === true) throw new Error('node is down')
+        return over.unspent?.[address] ?? []
+      },
     },
     {
       load: async () => saved,
@@ -77,7 +95,7 @@ function makeService(over: {
     },
     wallet,
   )
-  return { service, broadcasts, signedDrafts, savedRef: () => saved }
+  return { service, broadcasts, signedDrafts, savedRef: () => saved, txFetches, cellCallsRef: () => cellCalls }
 }
 
 const tx = (over: Partial<ChainTx> & { txid: string }): ChainTx => ({
@@ -254,6 +272,130 @@ describe('status machine', () => {
     })
     const [view] = await service.status()
     expect(view!.state).toBe('reclaimed')
+  })
+})
+
+describe('rescan', () => {
+  const RECLAIM_ID = toHex(hash256(RECLAIM_PUB))
+  const CELL: ReclaimKeyCell = { account: 0, chain: 0, index: 0, algo: 'ecdsa', reclaimIdHex: RECLAIM_ID }
+  const BTC_ADDR = '1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA'
+  const F1 = 'a1'.repeat(32)
+
+  const freezeTx = (txid: string, reclaimId: string): ChainTx =>
+    tx({
+      txid,
+      vout: [
+        { value: 40_000_000n, scripthash: FREEZE_SH, downgrade: { btcAddress: BTC_ADDR, reclaimId } },
+        { value: 100n, scripthash: 'cd'.repeat(20) },
+      ],
+    })
+
+  it('discovers a freeze committed to one of our cells (fixed-cell convention)', async () => {
+    const { service, savedRef } = makeService({
+      unspent: { [FREEZE_ADDR]: [{ txid: F1, vout: 0, value: 40_000_000n }] },
+      cells: [CELL],
+      txs: { [F1]: freezeTx(F1, RECLAIM_ID) },
+    })
+    const views = await service.status()
+    expect(views).toHaveLength(1)
+    expect(views[0]!.state).toBe('frozen')
+    const saved = savedRef()
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({
+      freezeTxid: F1,
+      vout: 0,
+      valueAtomic: '40000000',
+      reclaim: { account: 0, chain: 0, index: 0, algo: 'ecdsa' },
+    })
+    // The journaled payout script is P2PKH of the annotated address.
+    expect(saved[0]!.btcScriptPubKeyHex).toMatch(/^76a914[0-9a-f]{40}88ac$/)
+  })
+
+  it('matches a post-quantum cell too', async () => {
+    const pqId = toHex(hash256(fromHex('99'.repeat(897))))
+    const cell: ReclaimKeyCell = { account: 0, chain: 1, index: 2, algo: 'falcon512', reclaimIdHex: pqId }
+    const { service, savedRef } = makeService({
+      unspent: { [FREEZE_ADDR]: [{ txid: F1, vout: 0, value: 1_000_000n }] },
+      cells: [cell],
+      txs: { [F1]: freezeTx(F1, pqId) },
+    })
+    await service.status()
+    expect(savedRef()[0]!.reclaim).toEqual({ account: 0, chain: 1, index: 2, algo: 'falcon512' })
+  })
+
+  it('ignores foreign freezes and never refetches them', async () => {
+    const { service, savedRef, txFetches } = makeService({
+      unspent: { [FREEZE_ADDR]: [{ txid: F1, vout: 0, value: 1_000_000n }] },
+      cells: [CELL],
+      txs: { [F1]: freezeTx(F1, 'ff'.repeat(32)) },
+    })
+    await service.status()
+    await service.status()
+    expect(savedRef()).toHaveLength(0)
+    expect(txFetches.filter((t) => t === F1)).toHaveLength(1)
+  })
+
+  it('leaves journaled outpoints alone', async () => {
+    const { service, savedRef } = makeService({
+      episodes: [EPISODE],
+      unspent: { [FREEZE_ADDR]: [{ txid: EPISODE.freezeTxid, vout: 0, value: 1_000_000n }] },
+      cells: [CELL],
+      txs: { [EPISODE.freezeTxid]: tx({ txid: EPISODE.freezeTxid }) },
+    })
+    const views = await service.status()
+    expect(views).toHaveLength(1)
+    expect(savedRef()).toHaveLength(1)
+  })
+
+  it('maps a downgrade-stage output back to its original freeze', async () => {
+    const F2 = 'a2'.repeat(32)
+    const D = 'd2'.repeat(32)
+    const { service, savedRef } = makeService({
+      unspent: { [DOWNGRADE_ADDR]: [{ txid: D, vout: 0, value: 990_000n }] },
+      cells: [CELL],
+      txs: {
+        [F2]: tx({ txid: F2, vout: [{ value: 1_000_000n, scripthash: FREEZE_SH }] }),
+        [D]: tx({
+          txid: D,
+          version: 7,
+          vout: [{ value: 990_000n, scripthash: DOWNGRADE_SH, downgrade: { reclaimId: RECLAIM_ID } }],
+          downgradeInfo: { btcTxid: 'ee'.repeat(32), freezeTxid: F2, freezeVout: 0, btcScriptPubKey: BTC_SPK_HEX },
+        }),
+      },
+      outspends: { [`${F2}:0`]: { spent: true, txid: D } },
+    })
+    const views = await service.status()
+    expect(views).toHaveLength(1)
+    expect(views[0]!.state).toBe('converting')
+    expect(views[0]!.downgradeTxid).toBe(D)
+    expect(savedRef()[0]).toMatchObject({
+      freezeTxid: F2,
+      vout: 0,
+      valueAtomic: '1000000',
+      btcScriptPubKeyHex: BTC_SPK_HEX,
+      reclaim: { account: 0, chain: 0, index: 0, algo: 'ecdsa' },
+    })
+  })
+
+  it('still renders the journal when the chain scan is unreachable', async () => {
+    const { service } = makeService({
+      listUnspentFails: true,
+      episodes: [EPISODE],
+      txs: { [EPISODE.freezeTxid]: tx({ txid: EPISODE.freezeTxid }) },
+    })
+    const views = await service.status()
+    expect(views).toHaveLength(1)
+    expect(views[0]!.state).toBe('frozen')
+  })
+
+  it('derives no cells while the covenant holds nothing unknown', async () => {
+    // PQ cells cost a WASM keygen each — an empty scan must not pay for them.
+    const { service, cellCallsRef } = makeService({
+      episodes: [EPISODE],
+      txs: { [EPISODE.freezeTxid]: tx({ txid: EPISODE.freezeTxid }) },
+    })
+    await service.status()
+    expect(cellCallsRef()).toBe(0)
   })
 })
 

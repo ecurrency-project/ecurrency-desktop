@@ -595,6 +595,43 @@ describe('EsploraClient — special transaction types', () => {
     });
   });
 
+  it('parses the covenant annotation on a freeze output', async () => {
+    // A freeze output (a STANDARD tx paying the covenant) carries a per-vout
+    // `downgrade` object: the promised BTC address and the reclaim id.
+    const raw = {
+      ...baseTx,
+      tx_type: 'standard',
+      vout: [
+        {
+          scripthash: 'b7'.repeat(20),
+          scripthash_address: 'btqFreeze',
+          value: 40_000_000,
+          downgrade: { btc_address: 'n1jP7jBBR9zxwBwz5X6JGH47W9btBfwZta', reclaim: '61EAFC'.padEnd(64, '0') },
+        },
+        { scripthash: 'cc', scripthash_address: 'ECchange', value: 100 },
+      ],
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const tx = await makeClient(fetchImpl).getTransaction(baseTx.txid);
+    expect(tx.vout[0]!.downgrade).toEqual({
+      btcAddress: 'n1jP7jBBR9zxwBwz5X6JGH47W9btBfwZta',
+      reclaimId: '61eafc'.padEnd(64, '0'),
+    });
+    expect(tx.vout[1]!.downgrade).toBeUndefined();
+  });
+
+  it('drops a non-hex reclaim placeholder but keeps the address', async () => {
+    const raw = {
+      ...baseTx,
+      tx_type: 'standard',
+      vout: [{ scripthash: 'b7'.repeat(20), value: 1, downgrade: { btc_address: 'n1jP…', reclaim: 'pending' } }],
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(raw));
+    const tx = await makeClient(fetchImpl).getTransaction(baseTx.txid);
+    expect(tx.vout[0]!.downgrade).toEqual({ btcAddress: 'n1jP…' });
+    expect(tx.vout[0]!.downgrade!.reclaimId).toBeUndefined();
+  });
+
   it('parses the burn form of downgrade_info', async () => {
     const raw = {
       ...baseTx,

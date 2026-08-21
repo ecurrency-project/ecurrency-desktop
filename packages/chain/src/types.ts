@@ -152,6 +152,18 @@ export interface DowngradeInfo {
   readonly btcBlockHash?: string;
 }
 
+/**
+ * The node's per-output view of a conversion covenant output (freeze or
+ * downgrade): the decoded source-chain payout address and the reclaim id —
+ * hash256 of the pubkey the covenant's ELSE branch lets reclaim the coins.
+ */
+export interface DowngradeOutputInfo {
+  readonly btcAddress?: string;
+  /** 32-byte hash256(pubkey), hex; absent when the node reports a non-hex
+   *  placeholder instead. */
+  readonly reclaimId?: string;
+}
+
 export interface CoinbaseInfo {
   readonly btcTxid: string;
   readonly btcBlockHeight: number;
@@ -198,6 +210,9 @@ export interface ChainTxOut {
   readonly scripthash: string;
   /** Decoded address, if the node could derive one from scripthash. */
   readonly address?: string;
+  /** Covenant annotation the node attaches to conversion (freeze/downgrade)
+   *  outputs: where the source-chain payout goes and who may reclaim. */
+  readonly downgrade?: DowngradeOutputInfo;
   /** Token id (hex) when this output carries a token.
    *  Token outputs have a zero native `value`; the movement is `tokenAmount`. */
   readonly tokenId?: string;
