@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SIGHASH } from './constants';
+import { SIGHASH, SIGHASH_COMMITS_TOKEN_ID } from './constants';
 import { fromHex, toHex } from './encoding/hex';
 import {
   TX_TYPE_STANDARD,
@@ -272,15 +272,61 @@ describe('serialize — token transfer', () => {
   });
 });
 
-describe('serializeForSighash — token transfer omits the token_hash prefix', () => {
-  it('starts with tx_type + input count, NOT the token_hash prefix', () => {
+describe('serializeForSighash — token transfer framing', () => {
+  it('starts with tx_type + input count (the wire varstr prefix stays off the sighash)', () => {
     const sig = toHex(serializeForSighash(TOKEN_TX));
-    // 04 (type) + 01 (varint: 1 input) + txid… — no 0x20 token_hash prefix.
+    // 04 (type) + 01 (varint: 1 input) + txid… — no 0x20 token_hash prefix
+    // up front; brands whose node commits the id append the RAW hash at the
+    // END instead (next test suite).
     expect(sig.startsWith('0401')).toBe(true);
     expect(sig.startsWith(`0420${TOKEN_ID}`)).toBe(false);
+    expect(sig.endsWith(TOKEN_ID)).toBe(SIGHASH_COMMITS_TOKEN_ID);
   });
 
   it('still covers the TRANSFER amounts (output data is signed)', () => {
     expect(toHex(serializeForSighash(TOKEN_TX))).toContain('012afe610300000000');
+  });
+});
+
+describe(`sighash and the token id (SIGHASH_COMMITS_TOKEN_ID = ${String(SIGHASH_COMMITS_TOKEN_ID)})`, () => {
+  // A newer node appends the RAW 32-byte token_hash after the outputs of a
+  // TX_TYPE_TOKENS sign data ("Add token_hash to transaction sign data") and
+  // rejects signatures that omit it; an older node rejects signatures that
+  // append it. The brand value must match the brand's node, and these tests
+  // pin whichever framing this build is configured for.
+  const base = {
+    inputs: [{ txid: new Uint8Array(32).fill(0x11), vout: 0 }],
+    outputs: [{ value: 0n, scripthash: new Uint8Array(20).fill(0x22), data: encodeTokenTransfer(5n) }],
+  };
+  const tokenHash = new Uint8Array(32).fill(0xaa);
+
+  if (SIGHASH_COMMITS_TOKEN_ID) {
+    it('different token ids produce different digests', () => {
+      const a = sighash({ txType: TX_TYPE_TOKENS, tokenHash, ...base });
+      const b = sighash({ txType: TX_TYPE_TOKENS, tokenHash: new Uint8Array(32).fill(0xbb), ...base });
+      expect(toHex(a)).not.toBe(toHex(b));
+    });
+
+    it('the raw hash is appended after the outputs, unframed', () => {
+      const withToken = serializeForSighash({ txType: TX_TYPE_TOKENS, tokenHash, ...base });
+      const withoutToken = serializeForSighash({ txType: TX_TYPE_TOKENS, tokenHash: new Uint8Array(0), ...base });
+      expect(withToken.length).toBe(withoutToken.length + 32);
+      expect(toHex(withToken.subarray(withToken.length - 32))).toBe(toHex(tokenHash));
+      // No varstr length prefix before it — the byte before the hash is the
+      // last byte of the outputs section, unchanged between the two forms.
+      expect(toHex(withToken.subarray(0, withoutToken.length))).toBe(toHex(withoutToken));
+    });
+  } else {
+    it('the sign data omits the token id (legacy framing)', () => {
+      const withToken = serializeForSighash({ txType: TX_TYPE_TOKENS, tokenHash, ...base });
+      const withoutToken = serializeForSighash({ txType: TX_TYPE_TOKENS, tokenHash: new Uint8Array(0), ...base });
+      expect(toHex(withToken)).toBe(toHex(withoutToken));
+      expect(toHex(withToken)).not.toContain('aa'.repeat(32));
+    });
+  }
+
+  it('a standard transaction is unaffected', () => {
+    const std = { txType: TX_TYPE_STANDARD, inputs: base.inputs, outputs: [{ value: 7n, scripthash: new Uint8Array(20).fill(0x22) }] } as const;
+    expect(toHex(serializeForSighash(std))).not.toContain('aa'.repeat(32));
   });
 });

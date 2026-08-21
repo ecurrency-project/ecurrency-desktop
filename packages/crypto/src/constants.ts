@@ -121,6 +121,15 @@ export interface DowngradeChainConfig {
 export const DOWNGRADE: Readonly<Record<Network, DowngradeChainConfig>> | null = null;
 
 /**
+ * Whether transaction sign data commits the token id. A newer node appends
+ * the raw 32-byte token hash after the outputs ("Add token_hash to
+ * transaction sign data") and rejects token-transfer signatures that omit
+ * it; an older node rejects signatures that append it. BRAND VALUE — flip
+ * only in lockstep with the brand's node deployment.
+ */
+export const SIGHASH_COMMITS_TOKEN_ID = false;
+
+/**
  * SIGHASH types accepted by the protocol. The wallet only ever emits
  * `SIGHASH_ALL`. Other modes are listed for completeness so decoders /
  * verifiers can reject them explicitly.
