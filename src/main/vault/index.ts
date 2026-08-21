@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { addressFromScripthash, decodeAddress, decodeWif, DOWNGRADE, exportAccountXpub, freezeScript, generateMnemonic, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, reclaimScripthash, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
+import { addressFromScripthash, decodeAddress, decodeWif, DOWNGRADE, downgradeScript, exportAccountXpub, freezeScript, generateMnemonic, hash256, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, reclaimScripthash, toHex, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
 import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
@@ -24,7 +24,7 @@ import { deriveInputKeypair, signUnsignedTx } from '../wallet/signTx'
 import { SnapshotStore } from '../wallet/snapshot'
 import { gatherFromActive, type GatheredUtxo } from '../wallet/spendable'
 import { UpgradeService, type ConvertPlan, type ConvertRequest } from '../wallet/UpgradeService'
-import { DowngradeService } from '../wallet/DowngradeService'
+import { DowngradeService, type ReclaimKeyCell } from '../wallet/DowngradeService'
 import { DowngradeMetaStore } from '../wallet/downgradeStore'
 import { UpgradeMetaStore } from '../wallet/upgradeStore'
 import { buildSeedWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } from '../wallet/watchDescriptor'
@@ -303,6 +303,34 @@ export function createWalletCore(): WalletCore {
       const sa = seedAddrSvc
       const signWith = seedMasterKey
       const freezeAddr = addressFromScripthash(reclaimScripthash(freezeScript(lockPubkey, cfg.freezeSeconds)), NETWORK)
+      const downgradeAddr = addressFromScripthash(reclaimScripthash(downgradeScript(cfg.outputSeconds)), NETWORK)
+      // Cells for covenant rescans: every issued key plus a small lookahead,
+      // as { derivation, hash256(pubkey) }. Each PQ cell costs a WASM keygen,
+      // so the list is cached until the issued counters move.
+      const CELL_LOOKAHEAD = 5
+      let cellCache: { key: string; cells: readonly ReclaimKeyCell[] } | null = null
+      const reclaimKeyCells = async (): Promise<readonly ReclaimKeyCell[]> => {
+        const idx = await sa.issuedIndices()
+        const cacheKey = [idx.receiveIndex, idx.changeIndex, idx.pqReceiveIndex, idx.pqChangeIndex].join(':')
+        if (cellCache !== null && cellCache.key === cacheKey) return cellCache.cells
+        const master = await signWith()
+        const branches: { algo: 'ecdsa' | 'falcon512'; chain: 0 | 1; count: number }[] = [
+          { algo: 'ecdsa', chain: 0, count: idx.receiveIndex + 1 + CELL_LOOKAHEAD },
+          { algo: 'ecdsa', chain: 1, count: idx.changeIndex + 1 + CELL_LOOKAHEAD },
+          { algo: 'falcon512', chain: 0, count: idx.pqReceiveIndex + 1 + CELL_LOOKAHEAD },
+          { algo: 'falcon512', chain: 1, count: idx.pqChangeIndex + 1 + CELL_LOOKAHEAD },
+        ]
+        const cells: ReclaimKeyCell[] = []
+        for (const b of branches) {
+          for (let index = 0; index < b.count; index += 1) {
+            const kp = await deriveInputKeypair(master, { account: 0, chain: b.chain, index, algo: b.algo }, NETWORK)
+            kp.privateKey.fill(0)
+            cells.push({ account: 0, chain: b.chain, index, algo: b.algo, reclaimIdHex: toHex(hash256(kp.publicKey)) })
+          }
+        }
+        cellCache = { key: cacheKey, cells }
+        return cells
+      }
       downgradeSvc = new DowngradeService(
         { lockPubkey, freezeSeconds: cfg.freezeSeconds, outputSeconds: cfg.outputSeconds, btcNetwork: NETWORK },
         chainClient,
@@ -315,6 +343,8 @@ export function createWalletCore(): WalletCore {
               .filter((u) => !frozen.has(`${u.txid}:${String(u.vout)}`))
           },
           freezeAddress: () => freezeAddr,
+          downgradeAddress: () => downgradeAddr,
+          reclaimKeyCells,
           changeAddressFor: (algo) => (algo === 'falcon512' ? sa.getPqChangeAddress() : sa.getChangeAddress()),
           feeRate: async () => (await chain.estimateFee()).medium,
           scripthashOf: (address) => decodeAddress(address).scripthash,

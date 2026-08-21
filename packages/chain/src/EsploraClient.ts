@@ -120,6 +120,9 @@ interface RawTxOut {
   readonly token_id?: string;
   readonly token_amount?: number | string;
   readonly token_decimals?: number | string;
+  // Conversion covenant outputs (freeze/downgrade) carry the payout address
+  // and the reclaim id; `reclaim` may be a non-hex placeholder.
+  readonly downgrade?: { readonly btc_address?: unknown; readonly reclaim?: unknown };
 }
 
 interface RawTx {
@@ -605,6 +608,7 @@ function parseTx(raw: RawTx): ChainTx {
       tokenId?: string;
       tokenAmount?: bigint;
       tokenDecimals?: number;
+      downgrade?: { btcAddress?: string; reclaimId?: string };
     } = {
       value: requireBigint(o.value, 'vout.value'),
       scripthash: requireString(
@@ -629,6 +633,20 @@ function parseTx(raw: RawTx): ChainTx {
         if (o.token_decimals !== undefined) {
           result.tokenDecimals = requireInt(o.token_decimals, 'vout.token_decimals');
         }
+      }
+    }
+    // Conversion covenant outputs: the payout address plus the reclaim id
+    // (hash256(pubkey), hex). `reclaim` non-hex (a placeholder) → id omitted.
+    if (typeof o.downgrade === 'object' && o.downgrade !== null) {
+      const info: { btcAddress?: string; reclaimId?: string } = {};
+      if (typeof o.downgrade.btc_address === 'string' && o.downgrade.btc_address.length > 0) {
+        info.btcAddress = o.downgrade.btc_address;
+      }
+      if (typeof o.downgrade.reclaim === 'string' && /^[0-9a-fA-F]{64}$/.test(o.downgrade.reclaim)) {
+        info.reclaimId = o.downgrade.reclaim.toLowerCase();
+      }
+      if (info.btcAddress !== undefined || info.reclaimId !== undefined) {
+        result.downgrade = info;
       }
     }
     return result;
