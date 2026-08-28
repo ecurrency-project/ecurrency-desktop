@@ -6,6 +6,8 @@ import {
   fromHex,
   requireScheme,
   serialize,
+  SIGHASH,
+  sighashCommitsTokenId,
   signTransaction,
   toHex,
   TX_TYPE_STANDARD,
@@ -28,8 +30,8 @@ export interface SignedTx {
 /** Map an unsigned draft to the crypto Transaction skeleton (no signatures).
  *  txids go in verbatim (wire order); the sighash covers inputs + outputs. A token
  *  transfer (tokenHash set) becomes TX_TYPE_TOKENS with the token-id prefix and the
- *  per-output TRANSFER `data`; the crypto serializer puts the prefix on the wire but
- *  keeps it out of the sighash, so signing stays token-agnostic. */
+ *  per-output TRANSFER `data`; whether the sighash ALSO commits the token id is the
+ *  chain's per-network fork (sighashCommitsTokenId), decided at signing time. */
 export function toCryptoTransaction(unsigned: UnsignedTx): Transaction {
   return {
     txType: unsigned.tokenHash !== undefined ? TX_TYPE_TOKENS : TX_TYPE_STANDARD,
@@ -66,7 +68,7 @@ export async function buildSignedTransaction(unsigned: UnsignedTx, master: HDKey
     }),
   )
   try {
-    return await signTransaction(tx, signers)
+    return await signTransaction(tx, signers, SIGHASH.ALL, sighashCommitsTokenId(network))
   } finally {
     for (const signer of signers) signer.privateKey.fill(0)
   }

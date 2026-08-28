@@ -9,7 +9,7 @@
 //
 // All multi-byte numeric fields are little-endian.
 
-import { SIGHASH, SIGHASH_COMMITS_TOKEN_ID } from './constants';
+import { SIGHASH } from './constants';
 import { encodeVarint } from './encoding/varint';
 import { encodeVarstr } from './encoding/varstr';
 import { hash256 } from './hashes';
@@ -98,6 +98,7 @@ const VALUE_BYTES = 8;
 export function serializeForSighash(
   tx: Transaction,
   sighashType: number = SIGHASH.ALL,
+  commitsTokenId?: boolean,
 ): Uint8Array {
   if (sighashType !== SIGHASH.ALL) {
     // NONE / SINGLE / ANYONECANPAY aren't implemented. Document the
@@ -117,13 +118,22 @@ export function serializeForSighash(
   for (const output of tx.outputs) {
     parts.push(serializeOutput(output));
   }
-  // On brands whose node commits it (SIGHASH_COMMITS_TOKEN_ID), a token
-  // transfer signs its token id too — appended RAW (32 bytes, no varstr
-  // prefix, unlike the wire form), after the outputs. Without it a signature
-  // would be valid for the same movement of ANY token; older nodes instead
-  // REJECT sign data that includes it, hence the per-brand gate.
-  if (SIGHASH_COMMITS_TOKEN_ID && tx.txType === TX_TYPE_TOKENS) {
-    parts.push(tokenHashPrefix(tx.tokenHash));
+  // Past the chain's token-sighash fork (TOKEN_SIGHASH_FORK, a brand
+  // value), a token transfer signs its token id too — appended RAW (32
+  // bytes, no varstr prefix, unlike the wire form), after the outputs.
+  // Without it a signature would be valid for the same movement of ANY
+  // token; BEFORE the fork the node rejects sign data that includes it.
+  // This layer knows neither network nor time, so a token transfer demands
+  // the verdict explicitly — sighashCommitsTokenId(network) at signing time.
+  if (tx.txType === TX_TYPE_TOKENS) {
+    if (commitsTokenId === undefined) {
+      throw new RangeError(
+        'serializeForSighash: a token transfer needs an explicit commitsTokenId (pass sighashCommitsTokenId(network))',
+      );
+    }
+    if (commitsTokenId) {
+      parts.push(tokenHashPrefix(tx.tokenHash));
+    }
   }
   return concat(parts);
 }
@@ -136,8 +146,9 @@ export function serializeForSighash(
 export function sighash(
   tx: Transaction,
   sighashType: number = SIGHASH.ALL,
+  commitsTokenId?: boolean,
 ): Uint8Array {
-  return hash256(serializeForSighash(tx, sighashType));
+  return hash256(serializeForSighash(tx, sighashType, commitsTokenId));
 }
 
 // ─── Full serialization (with signatures) ────────────────────────────
@@ -165,8 +176,8 @@ export function serialize(tx: Transaction): Uint8Array {
   parts.push(new Uint8Array([tx.txType]));
   // Token transfers carry a varstr(token_hash) prefix right after the type
   // byte on the wire; the sighash appends the RAW hash after the outputs
-  // instead — and only on brands whose node commits it (see
-  // serializeForSighash and SIGHASH_COMMITS_TOKEN_ID).
+  // instead — and only past the chain's token-sighash fork (see
+  // serializeForSighash and TOKEN_SIGHASH_FORK).
   if (tx.txType === TX_TYPE_TOKENS) {
     parts.push(encodeVarstr(tokenHashPrefix(tx.tokenHash)));
   }

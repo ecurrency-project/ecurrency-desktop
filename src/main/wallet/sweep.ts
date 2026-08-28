@@ -1,4 +1,5 @@
 import type { Utxo } from '@qbitcoin/chain'
+import type { Network } from '@qbitcoin/crypto'
 import { ChainService, type ChainBackend } from './ChainService'
 import { createKeyAddressSource, signUnsignedTxWithKey, type ImportedKey } from './keyWallet'
 import { SendService } from './SendService'
@@ -37,7 +38,7 @@ export interface SweepSession {
 
 // Build an ephemeral sweep session around an already-materialized key. The
 // caller owns the key's lifetime only up to here — dispose() wipes it.
-export function createSweepSession(backend: SweepBackend, key: ImportedKey): SweepSession {
+export function createSweepSession(backend: SweepBackend, key: ImportedKey, network: Network): SweepSession {
   const source = createKeyAddressSource(() => Promise.resolve(key))
   const chain = new ChainService(backend, source.branches)
   const gather = async (): Promise<GatheredUtxo[]> => gatherFromActive(await chain.spendableAddresses(), backend)
@@ -53,7 +54,7 @@ export function createSweepSession(backend: SweepBackend, key: ImportedKey): Swe
     getChangeAddress: ownAddress,
     getPqChangeAddress: ownAddress,
     advanceChange: () => Promise.resolve(),
-    sign: (unsigned) => signUnsignedTxWithKey(unsigned, key),
+    sign: (unsigned) => signUnsignedTxWithKey(unsigned, key, network),
     broadcast: async (rawHex) => (await backend.broadcastTransaction(rawHex)).txid,
   })
 

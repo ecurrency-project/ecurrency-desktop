@@ -121,13 +121,33 @@ export interface DowngradeChainConfig {
 export const DOWNGRADE: Readonly<Record<Network, DowngradeChainConfig>> | null = null;
 
 /**
- * Whether transaction sign data commits the token id. A newer node appends
- * the raw 32-byte token hash after the outputs ("Add token_hash to
- * transaction sign data") and rejects token-transfer signatures that omit
- * it; an older node rejects signatures that append it. BRAND VALUE — flip
- * only in lockstep with the brand's node deployment.
+ * When transaction sign data starts committing the token id, per network
+ * (unix seconds). From the fork moment the node appends the raw 32-byte
+ * token hash after the outputs ("Add token_hash to transaction sign data")
+ * and rejects token-transfer signatures that omit it; BEFORE the fork the
+ * same node rejects signatures that append it — so the switch must happen
+ * at the fork time, not at a release. `0` = since genesis, null = never.
+ * BRAND VALUE — must mirror the brand node's fork schedule.
  */
-export const SIGHASH_COMMITS_TOKEN_ID = false;
+export const TOKEN_SIGHASH_FORK: Readonly<Record<Network, number | null>> = {
+  mainnet: 0,
+  testnet: 0,
+};
+
+/** The fork predicate, pure for testability: does a signature produced at
+ *  `atSeconds` commit the token id under fork time `fork`? */
+export function forkCommitsTokenId(fork: number | null, atSeconds: number): boolean {
+  return fork !== null && atSeconds >= fork;
+}
+
+/** Whether a token-transfer signature produced at `atSeconds` (default:
+ *  now) must commit the token id on `network`. */
+export function sighashCommitsTokenId(
+  network: Network,
+  atSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
+  return forkCommitsTokenId(TOKEN_SIGHASH_FORK[network], atSeconds);
+}
 
 /**
  * SIGHASH types accepted by the protocol. The wallet only ever emits

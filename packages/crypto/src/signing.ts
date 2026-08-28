@@ -91,6 +91,9 @@ export async function signTransaction(
   tx: Transaction,
   signers: ReadonlyArray<SigningInput>,
   sighashType: number = SIGHASH.ALL,
+  // Required for token transfers: whether the sign data commits the token
+  // id (sighashCommitsTokenId(network) at signing time). See transaction.ts.
+  commitsTokenId?: boolean,
 ): Promise<Transaction> {
   if (sighashType !== SIGHASH.ALL) {
     throw new RangeError(
@@ -111,7 +114,7 @@ export async function signTransaction(
     byIndex.set(signer.inputIndex, signer);
   }
 
-  const digest = sighash(tx, sighashType);
+  const digest = sighash(tx, sighashType, commitsTokenId);
 
   const inputs: TxInput[] = await Promise.all(
     tx.inputs.map(async (input, i): Promise<TxInput> => {

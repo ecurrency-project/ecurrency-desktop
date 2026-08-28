@@ -6,8 +6,11 @@ import {
   ALGO_POSTQUANTUM_BIT,
   DENOMINATOR,
   SIGHASH,
+  TOKEN_SIGHASH_FORK,
   WIF_VERSION,
+  forkCommitsTokenId,
   isPostQuantum,
+  sighashCommitsTokenId,
 } from './constants';
 import { toHex } from './encoding/hex';
 
@@ -109,5 +112,32 @@ describe('SIGHASH', () => {
     expect(SIGHASH.NONE).toBe(2);
     expect(SIGHASH.SINGLE).toBe(3);
     expect(SIGHASH.ANYONECANPAY).toBe(0x80);
+  });
+});
+
+describe('token sighash fork', () => {
+  it('the predicate: null never commits, 0 always, T from T inclusive', () => {
+    expect(forkCommitsTokenId(null, 0)).toBe(false);
+    expect(forkCommitsTokenId(null, 4_000_000_000)).toBe(false);
+    expect(forkCommitsTokenId(0, 0)).toBe(true);
+    expect(forkCommitsTokenId(0, 1)).toBe(true);
+    const fork = 1_789_430_400;
+    expect(forkCommitsTokenId(fork, fork - 1)).toBe(false);
+    expect(forkCommitsTokenId(fork, fork)).toBe(true);
+    expect(forkCommitsTokenId(fork, fork + 1)).toBe(true);
+  });
+
+  it('sighashCommitsTokenId reads this build\'s fork times', () => {
+    // Value-agnostic: brand branches pin the actual times in their own
+    // brand tests; here only the wiring is under test.
+    for (const network of ['mainnet', 'testnet'] as const) {
+      const fork = TOKEN_SIGHASH_FORK[network];
+      if (fork === null) {
+        expect(sighashCommitsTokenId(network)).toBe(false);
+      } else {
+        expect(sighashCommitsTokenId(network, fork)).toBe(true);
+        expect(sighashCommitsTokenId(network, Math.max(0, fork - 1))).toBe(fork === 0);
+      }
+    }
   });
 });

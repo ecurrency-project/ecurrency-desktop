@@ -5,6 +5,8 @@ import {
   getPublicKey,
   schnorrGetPublicKey,
   serialize,
+  SIGHASH,
+  sighashCommitsTokenId,
   signTransaction,
   toHex,
   txid as computeTxid,
@@ -134,7 +136,7 @@ export async function inspectWifKey(wif: string, network: Network, opts?: { read
  * must match the key's algorithm; a mismatch means a programming error and is
  * refused loudly.
  */
-export async function signUnsignedTxWithKey(unsigned: UnsignedTx, key: ImportedKey): Promise<SignedTx> {
+export async function signUnsignedTxWithKey(unsigned: UnsignedTx, key: ImportedKey, network: Network): Promise<SignedTx> {
   const tx = toCryptoTransaction(unsigned)
   const signers: SigningInput[] = unsigned.inputs.map((input, index) => {
     if (input.algo !== key.algo) {
@@ -142,6 +144,6 @@ export async function signUnsignedTxWithKey(unsigned: UnsignedTx, key: ImportedK
     }
     return { inputIndex: index, privateKey: key.privateKey, publicKey: key.publicKey, algo: key.algo }
   })
-  const signed = await signTransaction(tx, signers)
+  const signed = await signTransaction(tx, signers, SIGHASH.ALL, sighashCommitsTokenId(network))
   return { rawHex: toHex(serialize(signed)), txid: toHex(computeTxid(signed)) }
 }

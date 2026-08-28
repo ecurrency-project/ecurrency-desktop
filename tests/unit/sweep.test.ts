@@ -44,7 +44,7 @@ const utxo = (n: number, value: bigint): Utxo => ({ txid: String(n).padStart(2, 
 describe('createSweepSession', () => {
   it('scans the balance of exactly the key address', async () => {
     const key = await makeKey()
-    const session = createSweepSession(backend(key, [utxo(1, 60_000n), utxo(2, 40_000n)]), key)
+    const session = createSweepSession(backend(key, [utxo(1, 60_000n), utxo(2, 40_000n)]), key, 'mainnet')
     expect(session.address).toBe(key.address)
     expect((await session.scanBalance()).balanceAtomic).toBe('100000')
   })
@@ -57,6 +57,7 @@ describe('createSweepSession', () => {
         sent = hex
       }),
       key,
+      'mainnet',
     )
     const preview = await session.send.buildSend(RECIPIENT, 0n, undefined, true)
     expect(preview.changeAtomic).toBe('0')
@@ -72,7 +73,7 @@ describe('createSweepSession', () => {
 
   it('returns change from a partial send (to the key itself, by construction)', async () => {
     const key = await makeKey()
-    const session = createSweepSession(backend(key, [utxo(1, 60_000n), utxo(2, 40_000n)]), key)
+    const session = createSweepSession(backend(key, [utxo(1, 60_000n), utxo(2, 40_000n)]), key, 'mainnet')
     const preview = await session.send.buildSend(RECIPIENT, 30_000n, undefined, false)
     // amount + fee + change account for the selected inputs exactly.
     expect(BigInt(preview.amountAtomic)).toBe(30_000n)
@@ -82,7 +83,7 @@ describe('createSweepSession', () => {
 
   it('dispose wipes the key and drops any held draft', async () => {
     const key = await makeKey()
-    const session = createSweepSession(backend(key, [utxo(1, 60_000n)]), key)
+    const session = createSweepSession(backend(key, [utxo(1, 60_000n)]), key, 'mainnet')
     await session.send.buildSend(RECIPIENT, 0n, undefined, true)
     session.dispose()
     expect(key.privateKey.every((b) => b === 0)).toBe(true)

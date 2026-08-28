@@ -1,4 +1,4 @@
-import { activeScheme, decodeAddress, deriveFalconKeypair, derivePath, nativePath, encodeTokenTransfer, masterKeyFromSeed, mnemonicToSeed, sighash, toHex, TX_TYPE_TOKENS, verifySiglistEntry } from '@qbitcoin/crypto'
+import { activeScheme, decodeAddress, deriveFalconKeypair, derivePath, nativePath, encodeTokenTransfer, masterKeyFromSeed, mnemonicToSeed, SIGHASH, sighash, sighashCommitsTokenId, toHex, TX_TYPE_TOKENS, verifySiglistEntry } from '@qbitcoin/crypto'
 import { describe, expect, it } from 'vitest'
 import type { UnsignedTx } from '../../src/main/wallet/buildTx'
 import { buildSignedTransaction, signUnsignedTx, toCryptoTransaction } from '../../src/main/wallet/signTx'
@@ -83,9 +83,12 @@ describe('signUnsignedTx', () => {
     // Wire form: type byte 04, then varstr(0x20 || token_id).
     expect(rawHex.startsWith(`0420${tokenId}`)).toBe(true)
 
-    // The sighash omits that prefix, so the input still signs and verifies.
+    // The signature commits whichever token-sighash framing this build's
+    // fork dictates for the signing moment — and NOT the opposite one.
     const entry = (await buildSignedTransaction(u, MASTER, 'mainnet')).inputs[0]!.siglist![0]!
     const pub = derivePath(MASTER, nativePath(0, 0, 'mainnet', 0)).publicKey!
-    expect(await verifySiglistEntry(entry, sighash(toCryptoTransaction(u)), pub)).toBe(true)
+    const verdict = sighashCommitsTokenId('mainnet')
+    expect(await verifySiglistEntry(entry, sighash(toCryptoTransaction(u), SIGHASH.ALL, verdict), pub)).toBe(true)
+    expect(await verifySiglistEntry(entry, sighash(toCryptoTransaction(u), SIGHASH.ALL, !verdict), pub)).toBe(false)
   })
 })

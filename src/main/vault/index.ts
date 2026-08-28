@@ -287,7 +287,7 @@ export function createWalletCore(): WalletCore {
         getChangeAddress: ownAddress,
         getPqChangeAddress: ownAddress,
         advanceChange: async () => undefined,
-        sign: async (unsigned) => signUnsignedTxWithKey(unsigned, await getKey()),
+        sign: async (unsigned) => signUnsignedTxWithKey(unsigned, await getKey(), NETWORK),
         broadcast,
         onSpent: bustGather,
       })
@@ -577,7 +577,7 @@ export function createWalletCore(): WalletCore {
     if (algo === 'schnorr' && !isSchnorrEnabled()) throw new Error('Schnorr keys are not enabled yet.')
     const key = await importedKeyFromStored({ wif: cleanWif, algo, address: '' }, NETWORK)
     // Snapshot the current chain client so a mid-wizard node change can't repoint it.
-    sweep = createSweepSession(chainClient, key)
+    sweep = createSweepSession(chainClient, key, NETWORK)
     const { balanceAtomic } = await sweep.scanBalance()
     return { address: key.address, balanceAtomic }
   }
