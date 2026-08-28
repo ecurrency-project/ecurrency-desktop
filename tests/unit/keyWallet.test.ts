@@ -89,8 +89,8 @@ describe('signUnsignedTxWithKey', () => {
 
   it('signs every input with the imported ECDSA key (deterministic tx)', async () => {
     const key = await importedKeyFromStored({ wif: WIF, algo: 'ecdsa', address: '' }, 'mainnet')
-    const a = await signUnsignedTxWithKey(unsignedWith('ecdsa'), key)
-    const b = await signUnsignedTxWithKey(unsignedWith('ecdsa'), key)
+    const a = await signUnsignedTxWithKey(unsignedWith('ecdsa'), key, 'mainnet')
+    const b = await signUnsignedTxWithKey(unsignedWith('ecdsa'), key, 'mainnet')
     expect(a.txid).toMatch(/^[0-9a-f]{64}$/)
     expect(a.txid).toBe(b.txid) // RFC6979 ECDSA — fully deterministic
     // The P2PK redeem script for the key's pubkey is attached to the inputs.
@@ -99,21 +99,21 @@ describe('signUnsignedTxWithKey', () => {
 
   it('does NOT wipe the session-cached key after signing', async () => {
     const key = await importedKeyFromStored({ wif: WIF, algo: 'ecdsa', address: '' }, 'mainnet')
-    await signUnsignedTxWithKey(unsignedWith('ecdsa'), key)
+    await signUnsignedTxWithKey(unsignedWith('ecdsa'), key, 'mainnet')
     expect(key.privateKey.some((b) => b !== 0)).toBe(true)
     expect(toHex(key.privateKey)).toBe(toHex(PRIV))
   })
 
   it('refuses an input whose algorithm does not match the key', async () => {
     const key = await importedKeyFromStored({ wif: WIF, algo: 'ecdsa', address: '' }, 'mainnet')
-    await expect(signUnsignedTxWithKey(unsignedWith('falcon512'), key)).rejects.toThrow(/expects a falcon512 key/)
+    await expect(signUnsignedTxWithKey(unsignedWith('falcon512'), key, 'mainnet')).rejects.toThrow(/expects a falcon512 key/)
   })
 
   it('signs with a Schnorr key only when the feature flag is on', async () => {
     const key = await importedKeyFromStored({ wif: WIF, algo: 'schnorr', address: '' }, 'mainnet')
-    await expect(signUnsignedTxWithKey(unsignedWith('schnorr'), key)).rejects.toThrow(SchnorrDisabledError)
+    await expect(signUnsignedTxWithKey(unsignedWith('schnorr'), key, 'mainnet')).rejects.toThrow(SchnorrDisabledError)
     setSchnorrEnabled(true)
-    const signed = await signUnsignedTxWithKey(unsignedWith('schnorr'), key)
+    const signed = await signUnsignedTxWithKey(unsignedWith('schnorr'), key, 'mainnet')
     expect(signed.txid).toMatch(/^[0-9a-f]{64}$/)
     expect(signed.rawHex).toContain(toHex(scriptP2PK(key.publicKey)))
   })
