@@ -112,7 +112,10 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
       pane = <Receive />
       break
     case 'convert':
-      pane = <Convert />
+      // Keyed by wallet: Convert keeps its whole flow (deposit address,
+      // forms, episodes) in local state, so a wallet switch must remount it
+      // — otherwise the previous wallet's data stays on screen.
+      pane = <Convert key={activeWalletId} />
       break
     case 'activity':
       pane = <Activity />
