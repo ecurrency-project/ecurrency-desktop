@@ -94,6 +94,8 @@ export {
 export {
   buildFreezeOutput,
   downgradeScript,
+  federationFreezeScript,
+  federationScripthash,
   freezeOutputData,
   freezeScript,
   reclaimCsvValue,
@@ -240,12 +242,19 @@ export {
   btcAddressFromScriptPubKey,
   btcP2pkhAddress,
   btcP2pkhAddressForPubkey,
+  btcP2shAddress,
   decodeBtcAddress,
   toWords,
   type BtcAddressKind,
   type BtcNetwork,
   type DecodedBtcAddress,
 } from './btc/address';
+
+// The federated P2SH-P2WSH multisig (upgrade flow: the BTC lock address).
+export {
+  btcP2shP2wshMultisig,
+  type BtcMultisigLock,
+} from './btc/multisig';
 
 // Bitcoin transaction construction (upgrade flow: staging → lock spend).
 export {

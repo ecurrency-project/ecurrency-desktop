@@ -3,6 +3,8 @@ import { SIGHASH } from './constants';
 import {
   buildFreezeOutput,
   downgradeScript,
+  federationFreezeScript,
+  federationScripthash,
   freezeOutputData,
   freezeScript,
   reclaimCsvValue,
@@ -37,16 +39,17 @@ describe('reclaimCsvValue', () => {
   });
 });
 
-describe('freezeScript / downgradeScript', () => {
-  // The expected bytes are assembled BY HAND from the node's script template
-  // (independent of the builder), so the test catches any drift in either.
-  //
-  //   OP_IF <if> OP_ELSE <push4 csvLE> OP_CSV OP_DROP
-  //   OP_OUTPUTDATA <push1 0> <push1 32> OP_SUBSTR
-  //   OP_OVER OP_HASH256 OP_EQUALVERIFY OP_CHECKSIG OP_ENDIF
-  const elseBranch = (csvLeHex: string): string =>
-    '67' + '04' + csvLeHex + 'b2' + '75' + '80' + '0100' + '0120' + '7f' + '78' + 'aa' + '88' + 'ac' + '68';
+// The expected bytes below are assembled BY HAND from the node's script
+// template (independent of the builder), so the tests catch any drift in
+// either. The ELSE branch is shared by every covenant script and era:
+//
+//   OP_IF <if> OP_ELSE <push4 csvLE> OP_CSV OP_DROP
+//   OP_OUTPUTDATA <push1 0> <push1 32> OP_SUBSTR
+//   OP_OVER OP_HASH256 OP_EQUALVERIFY OP_CHECKSIG OP_ENDIF
+const elseBranch = (csvLeHex: string): string =>
+  '67' + '04' + csvLeHex + 'b2' + '75' + '80' + '0100' + '0120' + '7f' + '78' + 'aa' + '88' + 'ac' + '68';
 
+describe('freezeScript / downgradeScript', () => {
   it('assembles the freeze script byte-exactly', () => {
     // csv(48h) = 17280 | 1<<27 = 0x08004380 → LE 80430008
     const expected =
@@ -70,6 +73,57 @@ describe('freezeScript / downgradeScript', () => {
     const script = freezeScript(LOCK_PUBKEY, FREEZE_SEC);
     expect(toHex(reclaimScripthash(script))).toBe(toHex(hash160(script)));
     expect(reclaimScripthash(script)).toHaveLength(20);
+  });
+});
+
+describe('federationFreezeScript', () => {
+  // Three synthetic Falcon-512-sized keys (897 bytes); the first bytes force
+  // a sort order different from every input order used below.
+  const K_LOW = new Uint8Array(897).fill(0x1a);
+  const K_MID = new Uint8Array(897).fill(0x77);
+  const K_HIGH = new Uint8Array(897).fill(0xc1);
+  const PUSH_897 = '4d8103'; // OP_PUSHDATA2, length 897 LE — the node's op_pushdata encoding
+
+  it('assembles the 2-of-3 multisig IF branch byte-exactly, keys sorted', () => {
+    const script = federationFreezeScript([K_MID, K_HIGH, K_LOW], FREEZE_SEC);
+    const expected =
+      '63' + // OP_IF
+      '57' + '7e' + '88' + // OP_7 OP_TX_TYPE OP_EQUALVERIFY (type must be 7)
+      '52' + // OP_2
+      PUSH_897 + toHex(K_LOW) +
+      PUSH_897 + toHex(K_MID) +
+      PUSH_897 + toHex(K_HIGH) +
+      '53' + 'ae' + // OP_3 OP_CHECKMULTISIG
+      elseBranch('80430008'); // csv(48h), same ELSE as the single-key era
+    expect(toHex(script)).toBe(expected);
+  });
+
+  it('is key-order independent (the same set → the same script)', () => {
+    const a = federationFreezeScript([K_LOW, K_MID, K_HIGH], FREEZE_SEC);
+    const b = federationFreezeScript([K_HIGH, K_LOW, K_MID], FREEZE_SEC);
+    expect(toHex(a)).toBe(toHex(b));
+  });
+
+  it('keeps the ELSE (user reclaim) branch byte-identical to the single-key era', () => {
+    const legacy = freezeScript(LOCK_PUBKEY, FREEZE_SEC);
+    const federation = federationFreezeScript([K_LOW, K_MID, K_HIGH], FREEZE_SEC);
+    // OP_IF(1) + IF branch: legacy 3 + push(33)=34 + 1 = 38; federation
+    // 3 + 1 + (3+897)*3 + 2 = 2706. Everything after must match.
+    expect(toHex(federation.subarray(1 + 2706))).toBe(toHex(legacy.subarray(1 + 38)));
+  });
+
+  it('demands exactly three keys', () => {
+    expect(() => federationFreezeScript([K_LOW, K_MID], FREEZE_SEC)).toThrow(/2-of-3/);
+    expect(() => federationFreezeScript([K_LOW, K_MID, K_HIGH, K_LOW], FREEZE_SEC)).toThrow(/2-of-3/);
+  });
+
+  it('federationScripthash is hash256 of the script (32 bytes, PQ address form)', () => {
+    const script = federationFreezeScript([K_LOW, K_MID, K_HIGH], FREEZE_SEC);
+    expect(toHex(federationScripthash(script))).toBe(toHex(hash256(script)));
+    expect(federationScripthash(script)).toHaveLength(32);
+    // The downgrade-output script did not change between eras — only its
+    // scripthash function did.
+    expect(toHex(federationScripthash(downgradeScript(OUTPUT_SEC)))).toBe(toHex(hash256(downgradeScript(OUTPUT_SEC))));
   });
 });
 

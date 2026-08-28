@@ -26,6 +26,15 @@ export function btcP2pkhAddress(pubkeyhash: Uint8Array, network: BtcNetwork): st
   return encodeBase58Check(Uint8Array.of(P2PKH_VERSION[network]), pubkeyhash);
 }
 
+/** Encode a P2SH address from a 20-byte script hash (hash160 of the redeem
+ *  script) — the address form of the federated upgrade lock. */
+export function btcP2shAddress(scripthash: Uint8Array, network: BtcNetwork): string {
+  if (scripthash.length !== 20) {
+    throw new RangeError(`script hash must be 20 bytes, got ${scripthash.length}`);
+  }
+  return encodeBase58Check(Uint8Array.of(P2SH_VERSION[network]), scripthash);
+}
+
 /** Legacy P2PKH address for a compressed public key. */
 export function btcP2pkhAddressForPubkey(pubkey: Uint8Array, network: BtcNetwork): string {
   return btcP2pkhAddress(hash160(pubkey), network);
