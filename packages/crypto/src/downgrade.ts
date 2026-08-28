@@ -27,16 +27,30 @@
 // NOT a transaction field — a reclaim transaction is structurally ordinary
 // and simply stays invalid until the output is old enough.
 //
-// Brand values (the lock pubkey and windows) live in constants.ts DOWNGRADE;
+// COVENANT ERAS. The chain replaced its single system key with a federation:
+//   - single-key era: freeze IF = <lock pubkey> OP_CHECKSIG; the covenant
+//     scripthash is hash160 (freezeScript + reclaimScripthash below).
+//   - federation era: freeze IF = 2-of-3 OP_CHECKMULTISIG over Falcon-512
+//     operator keys (federationFreezeScript); the covenant scripthash is
+//     hash256 (federationScripthash), as for everything post-quantum.
+// The ELSE (user reclaim) branch is byte-identical in both eras, and the
+// downgrade-output SCRIPT never changed — only its scripthash function did.
+// Old-era outputs stay user-reclaimable forever; the conversion service only
+// serves the current era.
+//
+// Brand values (keys and windows) live in constants.ts DOWNGRADE;
 // everything here is generic mechanics.
 
 import { hash160, hash256 } from './hashes';
+import { opPushdata } from './script';
 import { sighash, TX_TYPE_STANDARD, type Transaction, type TxInput, type TxOutput } from './transaction';
 import { encodeSiglistEntry, signWithAlgorithm, type SigningInput } from './signing';
 import { SIGHASH } from './constants';
 
 // Opcode bytes (matching the node's script engine).
 const OP_1 = 0x51;
+const OP_2 = 0x52;
+const OP_3 = 0x53;
 const OP_6 = 0x56;
 const OP_7 = 0x57;
 const OP_IF = 0x63;
@@ -50,6 +64,7 @@ const OP_OUTPUTDATA = 0x80;
 const OP_EQUALVERIFY = 0x88;
 const OP_HASH256 = 0xaa;
 const OP_CHECKSIG = 0xac;
+const OP_CHECKMULTISIG = 0xae;
 const OP_CSV = 0xb2;
 
 /** Direct pushdata (lengths this module uses are all ≤ 75 bytes). */
@@ -120,18 +135,65 @@ export function freezeScript(lockPubkey: Uint8Array, freezeSeconds: number): Uin
 }
 
 /**
+ * The FEDERATION-era freeze-output script: the IF branch is a 2-of-3
+ * OP_CHECKMULTISIG over the three operators' Falcon-512 pubkeys (inlined
+ * via pushdata, sorted lexicographically — the node sorts the same way),
+ * still gated on TX_TYPE_DOWNGRADE; grief-pinning a freeze now requires
+ * compromising two operators, not one. ELSE is the same user reclaim.
+ * NOTE: the chain's OP_CHECKMULTISIG pops no extra dummy element (the
+ * bitcoin bug is not reproduced) — the federation spends with the siglist
+ * [sig, sig, 0x01]; the wallet itself only ever spends the ELSE branch.
+ */
+export function federationFreezeScript(
+  freezePubkeys: readonly Uint8Array[],
+  freezeSeconds: number,
+): Uint8Array {
+  if (freezePubkeys.length !== 3) {
+    throw new RangeError(`the freeze federation is 2-of-3: expected 3 pubkeys, got ${freezePubkeys.length}`);
+  }
+  const sorted = [...freezePubkeys].sort(compareBytes);
+  const ifBranch = concatBytes([
+    OP_7,
+    OP_TX_TYPE,
+    OP_EQUALVERIFY,
+    OP_2,
+    ...sorted.map((pk) => opPushdata(pk)),
+    OP_3,
+    OP_CHECKMULTISIG,
+  ]);
+  return reclaimScript(ifBranch, reclaimCsvValue(freezeSeconds));
+}
+
+/** Bytewise lexicographic order — how the node sorts the federation keys. */
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (a[i]! !== b[i]!) return a[i]! - b[i]!;
+  }
+  return a.length - b.length;
+}
+
+/**
  * The downgrade-output script: IF = anyone may spend in a TX_TYPE_BURN, no
  * signature (correctness comes from the burn's SPV proof, not a key); ELSE =
  * the user reclaims after the output window if the BTC payment never came.
+ * The script is byte-identical in both covenant eras — only the scripthash
+ * function changed (reclaimScripthash → federationScripthash).
  */
 export function downgradeScript(outputSeconds: number): Uint8Array {
   const ifBranch = concatBytes([OP_6, OP_TX_TYPE, OP_EQUALVERIFY, OP_1]);
   return reclaimScript(ifBranch, reclaimCsvValue(outputSeconds));
 }
 
-/** scripthash of a freeze/downgrade script (hash160 — both are classical). */
+/** scripthash of a SINGLE-KEY-era freeze/downgrade script (hash160). */
 export function reclaimScripthash(script: Uint8Array): Uint8Array {
   return hash160(script);
+}
+
+/** scripthash of a FEDERATION-era freeze/downgrade script — hash256, as for
+ *  everything post-quantum on the chain. */
+export function federationScripthash(script: Uint8Array): Uint8Array {
+  return hash256(script);
 }
 
 /**
