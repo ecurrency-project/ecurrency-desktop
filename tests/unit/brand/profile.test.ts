@@ -101,12 +101,13 @@ describe('chain profile', () => {
     expect(PROFILE.messageMagic).toBe('eCurrency Signed Message:\n')
   })
 
-  it('has no conversion flow and commits the token id since genesis', () => {
+  it("has no conversion flow and switches the token-id commitment at the node's fork times", () => {
     expect(UPGRADE).toBeNull()
     expect(DOWNGRADE).toBeNull()
-    expect(PROFILE.tokenSighashFork).toEqual({ mainnet: 0, testnet: 0 })
-    expect(sighashCommitsTokenId('mainnet', 0)).toBe(true)
-    expect(sighashCommitsTokenId('testnet', 1)).toBe(true)
+    // Detailed boundary checks in ./tokenSighash.test.ts.
+    expect(PROFILE.tokenSighashFork).toEqual({ mainnet: 1_789_430_400, testnet: 1_788_220_800 })
+    expect(sighashCommitsTokenId('mainnet', 1_789_430_399)).toBe(false)
+    expect(sighashCommitsTokenId('mainnet', 1_789_430_400)).toBe(true)
   })
 })
 
