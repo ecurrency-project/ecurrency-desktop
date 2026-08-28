@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChainTx, Outspend } from '@qbitcoin/chain'
-import { addressFromScripthash, downgradeScript, freezeScript, fromHex, getPublicKey, hash256, reclaimScripthash, toHex } from '@qbitcoin/crypto'
+import { addressFromScripthash, downgradeScript, federationFreezeScript, federationScripthash, freezeScript, fromHex, getPublicKey, hash256, reclaimScripthash, serialize, toHex, TX_TYPE_STANDARD, type Transaction } from '@qbitcoin/crypto'
 import {
   DowngradeService,
   estimateBtcForDowngrade,
@@ -11,11 +11,16 @@ import {
 } from '../../src/main/wallet/DowngradeService'
 import type { SpendableUtxo, UnsignedTx } from '../../src/main/wallet/buildTx'
 
-const LOCK_PUBKEY = fromHex('02' + 'ab'.repeat(32))
 const FREEZE_SEC = 48 * 3600
 const OUTPUT_SEC = 7 * 24 * 3600
-const FREEZE_SH = toHex(reclaimScripthash(freezeScript(LOCK_PUBKEY, FREEZE_SEC)))
-const DOWNGRADE_SH = toHex(reclaimScripthash(downgradeScript(OUTPUT_SEC)))
+
+// The current (federation) covenant era: 2-of-3 over Falcon-sized keys,
+// hash256 scripthashes — and the retired single-key era next to it.
+const FED_KEYS = [new Uint8Array(897).fill(0x1a), new Uint8Array(897).fill(0x77), new Uint8Array(897).fill(0xc1)]
+const LEGACY_KEY = fromHex('02' + 'ab'.repeat(32))
+const FREEZE_SH = toHex(federationScripthash(federationFreezeScript(FED_KEYS, FREEZE_SEC)))
+const DOWNGRADE_SH = toHex(federationScripthash(downgradeScript(OUTPUT_SEC)))
+const LEGACY_FREEZE_SH = toHex(reclaimScripthash(freezeScript(LEGACY_KEY, FREEZE_SEC)))
 
 const RECLAIM_PRIV = fromHex('11'.repeat(32))
 const RECLAIM_PUB = getPublicKey(RECLAIM_PRIV)
@@ -23,6 +28,7 @@ const BTC_SPK_HEX = '76a914' + '22'.repeat(20) + '88ac'
 
 const FREEZE_ADDR = addressFromScripthash(fromHex(FREEZE_SH), 'mainnet')
 const DOWNGRADE_ADDR = addressFromScripthash(fromHex(DOWNGRADE_SH), 'mainnet')
+const LEGACY_FREEZE_ADDR = addressFromScripthash(fromHex(LEGACY_FREEZE_SH), 'mainnet')
 const CHANGE_ADDR = addressFromScripthash(fromHex('cd'.repeat(20)), 'mainnet')
 
 const now = (): number => Math.floor(Date.now() / 1000)
@@ -39,9 +45,11 @@ function makeService(over: {
   outspends?: Record<string, Outspend>
   episodes?: DowngradeEpisodeRecord[]
   totalCoins?: bigint
-  /** Unspent covenant outputs, keyed by address (freeze / downgrade). */
+  /** Unspent covenant outputs, keyed by address (freeze / downgrade, any era). */
   unspent?: Record<string, { txid: string; vout: number; value: bigint }[]>
   cells?: ReclaimKeyCell[]
+  /** Raw wire hex per txid, for the rescan fallback. */
+  rawHex?: Record<string, string>
   listUnspentFails?: boolean
 } = {}) {
   const broadcasts: string[] = []
@@ -51,8 +59,7 @@ function makeService(over: {
   let saved: readonly DowngradeEpisodeRecord[] = over.episodes ?? []
   const wallet: DowngradeWallet = {
     spendable: async () => pool(),
-    freezeAddress: () => FREEZE_ADDR,
-    downgradeAddress: () => DOWNGRADE_ADDR,
+    covenantAddress: (scripthash) => addressFromScripthash(scripthash, 'mainnet'),
     reclaimKeyCells: async () => {
       cellCalls += 1
       return over.cells ?? []
@@ -68,13 +75,18 @@ function makeService(over: {
     },
   }
   const service = new DowngradeService(
-    { lockPubkey: LOCK_PUBKEY, freezeSeconds: FREEZE_SEC, outputSeconds: OUTPUT_SEC, btcNetwork: 'mainnet' },
+    { freezePubkeys: FED_KEYS, freezeSeconds: FREEZE_SEC, outputSeconds: OUTPUT_SEC, btcNetwork: 'mainnet', legacyLockPubkey: LEGACY_KEY },
     {
       getTransaction: async (txid) => {
         txFetches.push(txid)
         const tx = over.txs?.[txid]
         if (tx === undefined) throw new Error(`no tx ${txid}`)
         return tx
+      },
+      getTransactionHex: async (txid) => {
+        const hex = over.rawHex?.[txid]
+        if (hex === undefined) throw new Error(`no raw tx ${txid}`)
+        return hex
       },
       getOutspend: async (txid, vout) => over.outspends?.[`${txid}:${String(vout)}`] ?? { spent: false },
       getNodeStatus: async () => ({ totalCoins: over.totalCoins ?? 0n }),
@@ -388,6 +400,77 @@ describe('rescan', () => {
     expect(views[0]!.state).toBe('frozen')
   })
 
+  it('discovers a LEGACY-era freeze on the retired covenant address', async () => {
+    const F3 = 'a3'.repeat(32)
+    const { service, savedRef } = makeService({
+      unspent: { [LEGACY_FREEZE_ADDR]: [{ txid: F3, vout: 0, value: 40_000_000n }] },
+      cells: [CELL],
+      txs: {
+        [F3]: tx({
+          txid: F3,
+          vout: [{ value: 40_000_000n, scripthash: LEGACY_FREEZE_SH, downgrade: { btcAddress: BTC_ADDR, reclaimId: RECLAIM_ID } }],
+        }),
+      },
+    })
+    const views = await service.status()
+    expect(views).toHaveLength(1)
+    expect(savedRef()[0]).toMatchObject({ freezeTxid: F3, covenant: 'legacy' })
+  })
+
+  it('falls back to the raw wire bytes when the node stops annotating an era', async () => {
+    // The updated node no longer decorates retired-era outputs with
+    // `downgrade{}` — the covenant data must come from /tx/…/hex instead.
+    const F4 = 'a4'.repeat(32)
+    const rawFreeze: Transaction = {
+      txType: TX_TYPE_STANDARD,
+      inputs: [{ txid: fromHex('bb'.repeat(32)), vout: 0, siglist: [fromHex('00')], redeemScript: fromHex('00') }],
+      outputs: [
+        {
+          value: 40_000_000n,
+          scripthash: fromHex(LEGACY_FREEZE_SH),
+          data: fromHex(RECLAIM_ID + BTC_SPK_HEX),
+        },
+      ],
+    }
+    const { service, savedRef } = makeService({
+      unspent: { [LEGACY_FREEZE_ADDR]: [{ txid: F4, vout: 0, value: 40_000_000n }] },
+      cells: [CELL],
+      // JSON view carries NO downgrade annotation on the output…
+      txs: { [F4]: tx({ txid: F4, vout: [{ value: 40_000_000n, scripthash: LEGACY_FREEZE_SH }] }) },
+      // …but the wire bytes still carry [reclaim_id][btc spk].
+      rawHex: { [F4]: toHex(serialize(rawFreeze)) },
+    })
+    const views = await service.status()
+    expect(views).toHaveLength(1)
+    expect(savedRef()[0]).toMatchObject({
+      freezeTxid: F4,
+      vout: 0,
+      covenant: 'legacy',
+      btcScriptPubKeyHex: BTC_SPK_HEX,
+      reclaim: { account: 0, chain: 0, index: 0, algo: 'ecdsa' },
+    })
+  })
+
+  it('treats a covenant output with no usable data as foreign', async () => {
+    const F5 = 'a5'.repeat(32)
+    const rawShort: Transaction = {
+      txType: TX_TYPE_STANDARD,
+      inputs: [{ txid: fromHex('bb'.repeat(32)), vout: 0, siglist: [fromHex('00')], redeemScript: fromHex('00') }],
+      // data = bare reclaim_id, no scriptPubKey — not a usable conversion.
+      outputs: [{ value: 1_000n, scripthash: fromHex(LEGACY_FREEZE_SH), data: fromHex(RECLAIM_ID) }],
+    }
+    const { service, savedRef, txFetches } = makeService({
+      unspent: { [LEGACY_FREEZE_ADDR]: [{ txid: F5, vout: 0, value: 1_000n }] },
+      cells: [CELL],
+      txs: { [F5]: tx({ txid: F5, vout: [{ value: 1_000n, scripthash: LEGACY_FREEZE_SH }] }) },
+      rawHex: { [F5]: toHex(serialize(rawShort)) },
+    })
+    await service.status()
+    await service.status()
+    expect(savedRef()).toHaveLength(0)
+    expect(txFetches.filter((t) => t === F5)).toHaveLength(1)
+  })
+
   it('derives no cells while the covenant holds nothing unknown', async () => {
     // PQ cells cost a WASM keygen each — an empty scan must not pay for them.
     const { service, cellCallsRef } = makeService({
@@ -417,7 +500,19 @@ describe('reclaim', () => {
     const result = await service.reclaim(EPISODE.freezeTxid)
     expect(result.txid).toBe('b0'.repeat(32))
     expect(broadcasts).toHaveLength(1)
-    // The broadcast hex must contain the revealed covenant script.
-    expect(broadcasts[0]).toContain(toHex(freezeScript(LOCK_PUBKEY, FREEZE_SEC)))
+    // The broadcast reveals the covenant script of the episode's era — the
+    // federation freeze script for a current-era episode.
+    expect(broadcasts[0]).toContain(toHex(federationFreezeScript(FED_KEYS, FREEZE_SEC)))
+  })
+
+  it('reclaims a LEGACY-era freeze through the single-key script', async () => {
+    const legacyEpisode: DowngradeEpisodeRecord = { ...EPISODE, covenant: 'legacy' }
+    const { service, broadcasts } = makeService({
+      episodes: [legacyEpisode],
+      txs: { [EPISODE.freezeTxid]: tx({ txid: EPISODE.freezeTxid, status: { confirmed: true, blockHeight: 1, blockTime: now() - FREEZE_SEC - 60 } }) },
+    })
+    await service.reclaim(EPISODE.freezeTxid)
+    expect(broadcasts[0]).toContain(toHex(freezeScript(LEGACY_KEY, FREEZE_SEC)))
+    expect(broadcasts[0]).not.toContain(toHex(federationFreezeScript(FED_KEYS, FREEZE_SEC)))
   })
 })

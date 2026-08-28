@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { addressFromScripthash, decodeAddress, decodeWif, DOWNGRADE, downgradeScript, exportAccountXpub, freezeScript, generateMnemonic, hash256, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, reclaimScripthash, toHex, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
+import { addressFromScripthash, decodeAddress, decodeWif, DOWNGRADE, exportAccountXpub, generateMnemonic, hash256, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, toHex, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
 import { addressFromXpub } from '@qbitcoin/crypto'
 import { Vault } from '@qbitcoin/vault'
 import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
@@ -299,11 +299,11 @@ export function createWalletCore(): WalletCore {
     let downgradeSvc: DowngradeService | null = null
     if (DOWNGRADE !== null && seedAddrSvc !== null && seedMasterKey !== null) {
       const cfg = DOWNGRADE[NETWORK]
-      const lockPubkey = Uint8Array.from(Buffer.from(cfg.lockPubkeyHex, 'hex'))
+      const freezePubkeys = cfg.freezePubkeysHex.map((hex) => Uint8Array.from(Buffer.from(hex, 'hex')))
+      const legacyLockPubkey =
+        cfg.legacyLockPubkeyHex !== undefined ? Uint8Array.from(Buffer.from(cfg.legacyLockPubkeyHex, 'hex')) : undefined
       const sa = seedAddrSvc
       const signWith = seedMasterKey
-      const freezeAddr = addressFromScripthash(reclaimScripthash(freezeScript(lockPubkey, cfg.freezeSeconds)), NETWORK)
-      const downgradeAddr = addressFromScripthash(reclaimScripthash(downgradeScript(cfg.outputSeconds)), NETWORK)
       // Cells for covenant rescans: every issued key plus a small lookahead,
       // as { derivation, hash256(pubkey) }. Each PQ cell costs a WASM keygen,
       // so the list is cached until the issued counters move.
@@ -332,7 +332,13 @@ export function createWalletCore(): WalletCore {
         return cells
       }
       downgradeSvc = new DowngradeService(
-        { lockPubkey, freezeSeconds: cfg.freezeSeconds, outputSeconds: cfg.outputSeconds, btcNetwork: NETWORK },
+        {
+          freezePubkeys,
+          freezeSeconds: cfg.freezeSeconds,
+          outputSeconds: cfg.outputSeconds,
+          btcNetwork: NETWORK,
+          ...(legacyLockPubkey !== undefined ? { legacyLockPubkey } : {}),
+        },
         chainClient,
         new DowngradeMetaStore(new FileVaultStorage(wf('downgrade.json')), vault),
         {
@@ -342,8 +348,7 @@ export function createWalletCore(): WalletCore {
               .filter((u) => u.tokenId === undefined)
               .filter((u) => !frozen.has(`${u.txid}:${String(u.vout)}`))
           },
-          freezeAddress: () => freezeAddr,
-          downgradeAddress: () => downgradeAddr,
+          covenantAddress: (scripthash) => addressFromScripthash(scripthash, NETWORK),
           reclaimKeyCells,
           changeAddressFor: (algo) => (algo === 'falcon512' ? sa.getPqChangeAddress() : sa.getChangeAddress()),
           feeRate: async () => (await chain.estimateFee()).medium,

@@ -172,6 +172,7 @@ export {
   TOKEN_TXO_TYPE_TRANSFER,
   TX_TYPE_STANDARD,
   TX_TYPE_TOKENS,
+  deserialize,
   encodeTokenTransfer,
   serialize,
   serializeForSighash,
