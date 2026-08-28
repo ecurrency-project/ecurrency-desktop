@@ -117,5 +117,8 @@ export const PROFILE: ChainProfile = {
    * node's fork schedule — before the fork the node rejects signatures that
    * commit the id, after it those that omit it.
    */
-  tokenSighashFork: { mainnet: 0, testnet: 0 },
+  tokenSighashFork: {
+    mainnet: 1_789_430_400, // 2026-09-15 — the node's SIGN_TOKEN_HASH_START
+    testnet: 1_788_220_800, // 2026-09-01
+  },
 }
