@@ -105,13 +105,17 @@ export const UPGRADE: Readonly<Record<Network, UpgradeChainConfig>> | null = nul
 
 /** Consensus parameters of the native→BTC downgrade (see downgrade.ts). */
 export interface DowngradeChainConfig {
-  /** The chain's lock pubkey (hex, compressed) — the only key allowed to
-   *  move a freeze into a downgrade (the freeze script's IF branch). */
-  readonly lockPubkeyHex: string;
+  /** Falcon-512 pubkeys (hex) of the freeze federation — the freeze
+   *  script's IF branch is their 2-of-3 CHECKMULTISIG. */
+  readonly freezePubkeysHex: readonly string[];
   /** Seconds until the user may reclaim an unpicked freeze output. */
   readonly freezeSeconds: number;
   /** Seconds until the user may reclaim an unburned downgrade output. */
   readonly outputSeconds: number;
+  /** The retired single-key covenant era, when the chain ever ran one: the
+   *  conversion service no longer serves its outputs, but they stay
+   *  user-reclaimable (and rescanned) forever. */
+  readonly legacyLockPubkeyHex?: string;
 }
 
 /**

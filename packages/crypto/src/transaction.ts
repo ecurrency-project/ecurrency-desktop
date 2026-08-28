@@ -10,8 +10,8 @@
 // All multi-byte numeric fields are little-endian.
 
 import { SIGHASH } from './constants';
-import { encodeVarint } from './encoding/varint';
-import { encodeVarstr } from './encoding/varstr';
+import { decodeVarint, encodeVarint } from './encoding/varint';
+import { decodeVarstr, encodeVarstr } from './encoding/varstr';
 import { hash256 } from './hashes';
 
 /** TX_TYPE numeric values from the node. */
@@ -198,6 +198,78 @@ export function serialize(tx: Transaction): Uint8Array {
  */
 export function txid(tx: Transaction): Uint8Array {
   return hash256(serialize(tx));
+}
+
+/**
+ * Parse a wire-serialized transaction back into the model — the exact
+ * inverse of `serialize`. The wallet uses it to read outputs (a covenant
+ * output's `data` in particular) from the node's raw-hex endpoint when the
+ * JSON view does not carry them.
+ *
+ * Only the layouts `serialize` can produce are accepted: TX_TYPE_STANDARD
+ * and TX_TYPE_TOKENS. Other types carry type-specific payloads this module
+ * does not know, and misreading them would yield garbage offsets — refuse
+ * loudly instead. Trailing bytes and truncation are errors too.
+ */
+export function deserialize(raw: Uint8Array): Transaction {
+  let at = 0;
+  const uint = (what: string): number => {
+    const { value, bytesRead } = decodeVarint(raw, at);
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new RangeError(`deserialize: ${what} ${value} exceeds safe integer range`);
+    }
+    at += bytesRead;
+    return Number(value);
+  };
+  const str = (): Uint8Array => {
+    const { bytes, bytesRead } = decodeVarstr(raw, at);
+    at += bytesRead;
+    return bytes;
+  };
+  const take = (n: number, what: string): Uint8Array => {
+    if (at + n > raw.length) {
+      throw new RangeError(`deserialize: truncated ${what} at offset ${at}`);
+    }
+    const out = raw.subarray(at, at + n);
+    at += n;
+    return out;
+  };
+
+  const txType = take(1, 'tx type')[0]!;
+  if (txType !== TX_TYPE_STANDARD && txType !== TX_TYPE_TOKENS) {
+    throw new RangeError(`deserialize: unsupported tx type ${txType}`);
+  }
+  const tokenHash = txType === TX_TYPE_TOKENS ? tokenHashPrefix(str()) : undefined;
+
+  const inputs: TxInput[] = [];
+  const inputCount = uint('input count');
+  for (let i = 0; i < inputCount; i++) {
+    const txidBytes = take(32, `input ${i} txid`);
+    const vout = uint(`input ${i} vout`);
+    const siglist: Uint8Array[] = [];
+    const sigCount = uint(`input ${i} siglist length`);
+    for (let s = 0; s < sigCount; s++) siglist.push(str());
+    const redeemScript = str();
+    inputs.push({ txid: txidBytes, vout, siglist, redeemScript });
+  }
+
+  const outputs: TxOutput[] = [];
+  const outputCount = uint('output count');
+  for (let i = 0; i < outputCount; i++) {
+    const valueBytes = take(8, `output ${i} value`);
+    const value = new DataView(valueBytes.buffer, valueBytes.byteOffset, 8).getBigUint64(0, true);
+    const scripthash = str();
+    if (scripthash.length !== 20 && scripthash.length !== 32) {
+      throw new RangeError(`deserialize: output ${i} scripthash must be 20 or 32 bytes, got ${scripthash.length}`);
+    }
+    const data = str();
+    outputs.push({ value, scripthash, ...(data.length > 0 ? { data } : {}) });
+  }
+
+  if (at !== raw.length) {
+    throw new RangeError(`deserialize: ${raw.length - at} trailing bytes after the outputs`);
+  }
+  return { txType, ...(tokenHash !== undefined ? { tokenHash } : {}), inputs, outputs };
 }
 
 // ─── Token helpers ───────────────────────────────────────────────────

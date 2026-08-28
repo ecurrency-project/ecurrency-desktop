@@ -3,7 +3,10 @@ import {
   btcAddressFromScriptPubKey,
   buildFreezeOutput,
   decodeBtcAddress,
+  deserialize,
   downgradeScript,
+  federationFreezeScript,
+  federationScripthash,
   freezeScript,
   reclaimScripthash,
   signReclaimInput,
@@ -38,15 +41,34 @@ import type { SignedTx } from './signTx'
 
 /** Consensus parameters (brand values, from DOWNGRADE in @qbitcoin/crypto). */
 export interface DowngradeParams {
-  readonly lockPubkey: Uint8Array
+  /** Falcon-512 pubkeys of the freeze federation (2-of-3 in the freeze IF). */
+  readonly freezePubkeys: readonly Uint8Array[]
   readonly freezeSeconds: number
   readonly outputSeconds: number
   readonly btcNetwork: BtcNetwork
+  /** The retired single-key era's lock pubkey, when the chain ran one:
+   *  its outputs are rescanned and stay reclaimable, never converted. */
+  readonly legacyLockPubkey?: Uint8Array
+}
+
+/** Which covenant generation an episode's outputs live on. */
+export type CovenantEra = 'federation' | 'legacy'
+
+/** The per-era scripts and scripthashes (legacy hashes with hash160, the
+ *  federation with hash256; the downgrade SCRIPT is identical in both). */
+interface EraScripts {
+  readonly era: CovenantEra
+  readonly freezeScript: Uint8Array
+  readonly freezeScripthash: Uint8Array
+  readonly downgradeScripthash: Uint8Array
 }
 
 /** Chain reads the service needs; ChainClient satisfies it, tests fake it. */
 export interface DowngradeChainReader {
   getTransaction(txid: string): Promise<ChainTx>
+  /** Raw wire bytes (hex) — the rescan fallback when the node's JSON view
+   *  stops annotating a retired covenant era's outputs. */
+  getTransactionHex(txid: string): Promise<string>
   getOutspend(txid: string, vout: number): Promise<Outspend>
   getNodeStatus(): Promise<{ totalCoins?: bigint }>
   broadcastTransaction(rawHex: string): Promise<{ txid: string }>
@@ -61,6 +83,9 @@ export interface DowngradeEpisodeRecord {
   readonly vout: number
   readonly valueAtomic: string
   readonly btcScriptPubKeyHex: string
+  /** Covenant era of the freeze output — decides which redeem script a
+   *  reclaim reveals. Absent = the current (federation) era. */
+  readonly covenant?: 'legacy'
   /** Derivation of the reclaim key (the freeze tx's input 0). */
   readonly reclaim: {
     readonly account: number
@@ -91,11 +116,9 @@ export interface ReclaimKeyCell {
 export interface DowngradeWallet {
   /** Spendable pool for coin selection (native, unfrozen). */
   spendable(): Promise<readonly SpendableUtxo[]>
-  /** The freeze address (the freeze scripthash, address-encoded) — buildSend
-   *  decodes it back; keeps the service off the address codec. */
-  freezeAddress(): string
-  /** The downgrade-covenant address (second conversion stage), for rescan. */
-  downgradeAddress(): string
+  /** Address-encode a covenant scripthash (20 or 32 bytes) — buildSend and
+   *  listUnspent speak addresses; keeps the service off the address codec. */
+  covenantAddress(scripthash: Uint8Array): string
   /** Every key the wallet can reclaim with (issued cells plus a lookahead),
    *  with its reclaim id. Deriving PQ cells is expensive — callers ask once. */
   reclaimKeyCells(): Promise<readonly ReclaimKeyCell[]>
@@ -168,12 +191,45 @@ export class DowngradeService {
    *  every refresh. Session-only — a restart re-evaluates everything. */
   private readonly settledOutpoints = new Set<string>()
 
+  /** The covenant eras this brand knows: the federation (current — the only
+   *  one convert() pays into) first, then the retired single-key era when
+   *  the chain ran one (rescanned and reclaimable, never converted). */
+  private readonly eras: readonly EraScripts[]
+
   constructor(
     private readonly params: DowngradeParams,
     private readonly reader: DowngradeChainReader,
     private readonly store: DowngradeStore,
     private readonly wallet: DowngradeWallet,
-  ) {}
+  ) {
+    const downgrade = downgradeScript(params.outputSeconds)
+    const federation = federationFreezeScript(params.freezePubkeys, params.freezeSeconds)
+    const eras: EraScripts[] = [
+      {
+        era: 'federation',
+        freezeScript: federation,
+        freezeScripthash: federationScripthash(federation),
+        downgradeScripthash: federationScripthash(downgrade),
+      },
+    ]
+    if (params.legacyLockPubkey !== undefined) {
+      const legacy = freezeScript(params.legacyLockPubkey, params.freezeSeconds)
+      eras.push({
+        era: 'legacy',
+        freezeScript: legacy,
+        freezeScripthash: reclaimScripthash(legacy),
+        downgradeScripthash: reclaimScripthash(downgrade),
+      })
+    }
+    this.eras = eras
+  }
+
+  private eraOf(episode: DowngradeEpisodeRecord): EraScripts {
+    const era = episode.covenant === 'legacy' ? 'legacy' : 'federation'
+    const found = this.eras.find((e) => e.era === era)
+    if (found === undefined) throw new Error(`This brand has no ${era} covenant era.`)
+    return found
+  }
 
   /** Estimate what a conversion of `amountAtomic` yields. Throws when the
    *  resulting payout would be dust (economically unconvertible). */
@@ -211,7 +267,7 @@ export class DowngradeService {
     const reclaimPubkey = await this.wallet.inputPubkey(input0 as Parameters<DowngradeWallet['inputPubkey']>[0])
     const freezeOut = buildFreezeOutput(
       amountAtomic,
-      this.freezeScripthashBytes(),
+      this.federation.freezeScripthash,
       reclaimPubkey,
       spk,
     )
@@ -260,10 +316,6 @@ export class DowngradeService {
    * actionable there, and history shows them anyway.
    */
   async rescan(): Promise<number> {
-    const [freezeUtxos, downgradeUtxos] = await Promise.all([
-      this.reader.listUnspent(this.wallet.freezeAddress()),
-      this.reader.listUnspent(this.wallet.downgradeAddress()),
-    ])
     const episodes = await this.store.load()
     const known = new Set(episodes.map((e) => `${e.freezeTxid}:${String(e.vout)}`))
     // The cell map derives lazily: each PQ cell costs a WASM keygen, and on a
@@ -280,32 +332,38 @@ export class DowngradeService {
     }
 
     const additions: DowngradeEpisodeRecord[] = []
-    for (const u of freezeUtxos) {
-      const key = `${u.txid}:${String(u.vout)}`
-      if (known.has(key) || this.settledOutpoints.has(key)) continue
-      const record = await this.freezeEpisodeOf(u, cellFor)
-      if (record === undefined) {
-        this.settledOutpoints.add(key)
-        continue
+    for (const scripts of this.eras) {
+      const [freezeUtxos, downgradeUtxos] = await Promise.all([
+        this.reader.listUnspent(this.wallet.covenantAddress(scripts.freezeScripthash)),
+        this.reader.listUnspent(this.wallet.covenantAddress(scripts.downgradeScripthash)),
+      ])
+      for (const u of freezeUtxos) {
+        const key = `${u.txid}:${String(u.vout)}`
+        if (known.has(key) || this.settledOutpoints.has(key)) continue
+        const record = await this.freezeEpisodeOf(u, scripts.era, cellFor)
+        if (record === undefined) {
+          this.settledOutpoints.add(key)
+          continue
+        }
+        additions.push(record)
+        known.add(key)
       }
-      additions.push(record)
-      known.add(key)
-    }
-    for (const u of downgradeUtxos) {
-      const key = `${u.txid}:${String(u.vout)}`
-      if (this.settledOutpoints.has(key)) continue
-      const record = await this.downgradeEpisodeOf(u, cellFor)
-      if (record === undefined) {
+      for (const u of downgradeUtxos) {
+        const key = `${u.txid}:${String(u.vout)}`
+        if (this.settledOutpoints.has(key)) continue
+        const record = await this.downgradeEpisodeOf(u, scripts.era, cellFor)
+        if (record === undefined) {
+          this.settledOutpoints.add(key)
+          continue
+        }
+        const freezeKey = `${record.freezeTxid}:${String(record.vout)}`
+        // Either way this output needs no second look: the journal entry (an
+        // existing one, or the one added right here) walks to it via outspends.
         this.settledOutpoints.add(key)
-        continue
+        if (known.has(freezeKey)) continue
+        additions.push(record)
+        known.add(freezeKey)
       }
-      const freezeKey = `${record.freezeTxid}:${String(record.vout)}`
-      // Either way this output needs no second look: the journal entry (an
-      // existing one, or the one added right here) walks to it via outspends.
-      this.settledOutpoints.add(key)
-      if (known.has(freezeKey)) continue
-      additions.push(record)
-      known.add(freezeKey)
     }
     if (additions.length > 0) {
       await this.store.save([...episodes, ...additions])
@@ -337,9 +395,11 @@ export class DowngradeService {
     const fee = feeForInputs([synthetic], rate, 2)
     if (value <= fee) throw new Error('The output is too small to pay the reclaim fee.')
     const destAddress = await this.wallet.changeAddressFor(episode.reclaim.algo)
+    // The freeze redeem script differs per covenant era; the downgrade
+    // output's script is byte-identical in both.
     const redeem =
       outpoint.kind === 'freeze'
-        ? freezeScript(this.params.lockPubkey, this.params.freezeSeconds)
+        ? this.eraOf(episode).freezeScript
         : downgradeScript(this.params.outputSeconds)
     const tx: Transaction = {
       txType: TX_TYPE_STANDARD,
@@ -363,33 +423,31 @@ export class DowngradeService {
 
   // ── Internals ────────────────────────────────────────────────────────
 
-  private freezeScripthashBytes(): Uint8Array {
-    return reclaimScripthash(freezeScript(this.params.lockPubkey, this.params.freezeSeconds))
+  /** The current covenant era — the only one convert() pays into. */
+  private get federation(): EraScripts {
+    return this.eras[0]!
   }
 
   /** An unknown freeze UTXO → episode record, or undefined when it is
    *  definitively not ours / not decodable. Transient errors propagate. */
   private async freezeEpisodeOf(
     u: { txid: string; vout: number; value: bigint },
+    era: CovenantEra,
     cellFor: (reclaimId: string) => Promise<ReclaimKeyCell | undefined>,
   ): Promise<DowngradeEpisodeRecord | undefined> {
     const out = (await this.reader.getTransaction(u.txid)).vout[u.vout]
-    const reclaimId = out?.downgrade?.reclaimId
-    const btcAddress = out?.downgrade?.btcAddress
-    if (reclaimId === undefined || btcAddress === undefined) return undefined
-    const cell = await cellFor(reclaimId)
+    const identity = this.annotationIdentity(out) ?? (await this.covenantDataOf(u.txid, u.vout))
+    // A freeze episode needs both halves: the reclaim id to prove ownership
+    // and the payout script to display where the conversion was headed.
+    if (identity?.btcScriptPubKeyHex === undefined) return undefined
+    const cell = await cellFor(identity.reclaimIdHex)
     if (cell === undefined) return undefined
-    let spk: Uint8Array
-    try {
-      spk = decodeBtcAddress(btcAddress, this.params.btcNetwork).scriptPubKey
-    } catch {
-      return undefined
-    }
     return {
       freezeTxid: u.txid,
       vout: u.vout,
       valueAtomic: u.value.toString(),
-      btcScriptPubKeyHex: toHex(spk),
+      btcScriptPubKeyHex: identity.btcScriptPubKeyHex,
+      ...(era === 'legacy' ? { covenant: 'legacy' as const } : {}),
       reclaim: reclaimBranchOf(cell),
     }
   }
@@ -400,32 +458,76 @@ export class DowngradeService {
    *  back on this output. Undefined when definitively not ours. */
   private async downgradeEpisodeOf(
     u: { txid: string; vout: number; value: bigint },
+    era: CovenantEra,
     cellFor: (reclaimId: string) => Promise<ReclaimKeyCell | undefined>,
   ): Promise<DowngradeEpisodeRecord | undefined> {
     const dTx = await this.reader.getTransaction(u.txid)
     const info = dTx.downgradeInfo
     if (info?.freezeTxid === undefined || info.freezeVout === undefined) return undefined
-    const reclaimId = dTx.vout[u.vout]?.downgrade?.reclaimId
-    if (reclaimId === undefined) return undefined
-    const cell = await cellFor(reclaimId)
-    if (cell === undefined) return undefined
     const frozen = (await this.reader.getTransaction(info.freezeTxid)).vout[info.freezeVout]
     if (frozen === undefined) return undefined
+    // The reclaim id rides on every covenant output's data — prefer this
+    // output's own annotation, fall back to the FREEZE output's (annotation,
+    // then raw wire bytes; the freeze tx is a plain standard transaction —
+    // never the downgrade tx's raw form, whose type-specific payload the
+    // wire parser refuses).
+    const identity =
+      this.annotationIdentity(dTx.vout[u.vout]) ??
+      this.annotationIdentity(frozen) ??
+      (await this.covenantDataOf(info.freezeTxid, info.freezeVout))
+    if (identity === undefined) return undefined
+    const cell = await cellFor(identity.reclaimIdHex)
+    if (cell === undefined) return undefined
     return {
       freezeTxid: info.freezeTxid,
       vout: info.freezeVout,
       valueAtomic: frozen.value.toString(),
-      // The downgrade tx commits the payout scriptPubKey directly; the freeze
-      // output's decoded address is the fallback for display.
-      btcScriptPubKeyHex: info.btcScriptPubKey ?? this.spkHexOfBtcAddress(frozen.downgrade?.btcAddress) ?? '',
+      // The downgrade tx commits the payout scriptPubKey directly; the
+      // covenant data is the fallback for display.
+      btcScriptPubKeyHex: info.btcScriptPubKey ?? identity.btcScriptPubKeyHex ?? '',
+      ...(era === 'legacy' ? { covenant: 'legacy' as const } : {}),
       reclaim: reclaimBranchOf(cell),
     }
+  }
+
+  /** The identity a node-side vout annotation carries: the reclaim id, plus
+   *  the payout script when the annotated address decodes. Undefined when
+   *  there is no annotation or it names no reclaim id. */
+  private annotationIdentity(
+    out: { readonly downgrade?: { readonly reclaimId?: string; readonly btcAddress?: string } } | undefined,
+  ): { reclaimIdHex: string; btcScriptPubKeyHex?: string } | undefined {
+    const annotation = out?.downgrade
+    if (annotation?.reclaimId === undefined) return undefined
+    const spk = this.spkHexOfBtcAddress(annotation.btcAddress)
+    return { reclaimIdHex: annotation.reclaimId, ...(spk !== undefined ? { btcScriptPubKeyHex: spk } : {}) }
   }
 
   private spkHexOfBtcAddress(address: string | undefined): string | undefined {
     if (address === undefined) return undefined
     try {
       return toHex(decodeBtcAddress(address, this.params.btcNetwork).scriptPubKey)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** The same pair read from the output's RAW data via the node's hex
+   *  endpoint — the node's JSON view stops annotating outputs of a retired
+   *  covenant era, but the wire bytes keep [reclaim_id(32)][btc spk] forever.
+   *  Undefined when the output carries no such data (definitive); a failed
+   *  FETCH propagates (transient — retried next refresh). */
+  private async covenantDataOf(
+    txid: string,
+    vout: number,
+  ): Promise<{ reclaimIdHex: string; btcScriptPubKeyHex: string } | undefined> {
+    const rawHex = await this.reader.getTransactionHex(txid)
+    try {
+      const data = deserialize(fromHex(rawHex)).outputs[vout]?.data
+      if (data === undefined || data.length <= 32) return undefined
+      return {
+        reclaimIdHex: toHex(data.subarray(0, 32)),
+        btcScriptPubKeyHex: toHex(data.subarray(32)),
+      }
     } catch {
       return undefined
     }
@@ -445,7 +547,7 @@ export class DowngradeService {
     ])
     return buildSend({
       utxos,
-      recipient: this.wallet.freezeAddress(),
+      recipient: this.wallet.covenantAddress(this.federation.freezeScripthash),
       amountAtomic,
       feeAtomic,
       changeAddressFor: (algo) => (algo === 'falcon512' ? pqChange : classicalChange),
@@ -479,9 +581,9 @@ export class DowngradeService {
       // the ELSE branch is ours — a completed reclaim.
       return { ...base, state: 'reclaimed' }
     }
-    // The service's downgrade tx: find its covenant output and the payout it
-    // committed to.
-    const downgradeSh = toHex(reclaimScripthash(downgradeScript(this.params.outputSeconds)))
+    // The service's downgrade tx: find its covenant output (hashed by the
+    // episode's own era) and the payout it committed to.
+    const downgradeSh = toHex(this.eraOf(e).downgradeScripthash)
     const dVout = spender.vout.findIndex((o) => o.scripthash === downgradeSh)
     const btcTxid = spender.downgradeInfo?.btcTxid
     const withDowngrade = {
