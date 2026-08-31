@@ -89,6 +89,12 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
     // watch or key wallet has none), and a stale gate left Convert reachable
     // after a switch.
   }, [activeWalletId])
+
+  useEffect(() => {
+    setPreselected([])
+    setSendToken(null)
+  }, [activeWalletId])
+
   const navItems = convertEnabled ? [...NAV.slice(0, 3), CONVERT_NAV, ...NAV.slice(3)] : NAV
   useEffect(() => {
     if (!convertEnabled && nav === 'convert') setNav('wallet')
@@ -112,10 +118,7 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
       pane = <Receive />
       break
     case 'convert':
-      // Keyed by wallet: Convert keeps its whole flow (deposit address,
-      // forms, episodes) in local state, so a wallet switch must remount it
-      // — otherwise the previous wallet's data stays on screen.
-      pane = <Convert key={activeWalletId} />
+      pane = <Convert />
       break
     case 'activity':
       pane = <Activity />
@@ -208,7 +211,9 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
             Refresh
           </button>
         </header>
-        <div style={{ flex: 1, minHeight: 0 }}>{pane}</div>
+        <div key={activeWalletId ?? 'none'} style={{ flex: 1, minHeight: 0 }}>
+          {pane}
+        </div>
       </div>
     </div>
   )
