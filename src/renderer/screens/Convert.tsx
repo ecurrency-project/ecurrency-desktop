@@ -53,7 +53,6 @@ export function Convert() {
   const [loadError, setLoadError] = useState<string | null>(null)
   // BTC-side sync state of the node: synced flag + headers/scanned heights.
   // null = unknown / not reported (old node, unreachable).
-  const [btcSync, setBtcSync] = useState<{ synced?: boolean; headers?: number; scanned?: number } | null>(null)
   const [copied, setCopied] = useState(false)
 
   // Compose state.
@@ -105,23 +104,6 @@ export function Convert() {
           })
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)))
-    // The node ignores upgrade transactions until its BTC chain is synced,
-    // and credits require the payment's block to be fully SCANNED (which can
-    // trail the headers) — surface both so a wait isn't mistaken for a loss.
-    wallet
-      .nodeStatus()
-      .then((n) =>
-        setBtcSync(
-          n.reachable
-            ? {
-                ...(n.btcSynced !== undefined ? { synced: n.btcSynced } : {}),
-                ...(n.btcHeaders !== undefined ? { headers: n.btcHeaders } : {}),
-                ...(n.btcScanned !== undefined ? { scanned: n.btcScanned } : {}),
-              }
-            : null,
-        ),
-      )
-      .catch(() => setBtcSync(null))
     wallet
       .downgradeStatus()
       .then(setDownEpisodes)
@@ -289,14 +271,6 @@ export function Convert() {
     <Screen center>
       <div style={{ maxWidth: 520, width: '100%', margin: '32px auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {loadError !== null && <div className="field-hint field-hint--error">{loadError}</div>}
-
-        {(btcSync?.synced === false || (btcSync?.headers !== undefined && btcSync.scanned !== undefined && btcSync.headers - btcSync.scanned > 2)) && (
-          <Alert variant="banner">
-            {btcSync?.synced === false
-              ? `The ${nativeLabel} node is still syncing the ${src} chain. You can deposit and convert now, but the network will only credit conversions after that sync completes — expect a delay.`
-              : `The ${nativeLabel} node is still scanning ${src} blocks (${String((btcSync?.headers ?? 0) - (btcSync?.scanned ?? 0))} behind). Conversions are credited once the payment's block has been scanned.`}
-          </Alert>
-        )}
 
         {/* Both directions ship on this brand: BTC→native (upgrade) and
             native→BTC (downgrade). One toggle, two independent flows. */}
