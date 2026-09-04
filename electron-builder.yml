@@ -1,7 +1,7 @@
 # Packaging configuration for electron-builder.
-# macOS code signing + notarization (Developer ID) is wired below but gated on
-# credentials supplied via env at build time (see docs/signing-macos.md). Windows
-# signing (Azure Trusted Signing / OV cert) is added later.
+# macOS code signing + notarization (Developer ID) and Windows Authenticode
+# signing are both wired below, and both are gated on credentials supplied via
+# env at build time.
 appId: org.qbitcoin.wallet.desktop
 productName: QBitcoin Wallet
 copyright: Copyright © 2026 QBitcoin
@@ -43,8 +43,19 @@ mac:
 
 win:
   target:
-    - nsis
+    - target: nsis
+      arch:
+        - x64
   artifactName: QBitcoin-Wallet-${version}-setup.${ext}
+  signtoolOptions:
+    sign: ./build/sign-windows.cjs
+    signingHashAlgorithms:
+      - sha256
+    # publisherName is a BRAND VALUE, set in each brand's packaging commit:
+    # electron-updater verifies the downloaded installer's signature against it,
+    # and with a custom sign hook there is no certificate file for
+    # electron-builder to read the common name from. Left unset here, an update
+    # would install without that check.
 
 nsis:
   oneClick: false
