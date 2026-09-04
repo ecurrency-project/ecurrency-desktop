@@ -90,7 +90,19 @@ describe('quoteForCmd', () => {
   })
 
   it('refuses characters cmd.exe would reinterpret, without echoing the value', () => {
-    for (const hostile of ['-password=pa"ss', '-password=pa%USERNAME%ss', '-password=pa^ss']) {
+    const hostiles = [
+      '-password=pa"ss',
+      '-password=pa%USERNAME%ss',
+      '-password=pa^ss',
+      // An ampersand ends the command as far as cmd is concerned: the password
+      // arrives truncated and the service answers "invalid grant".
+      '-password=pa&ss',
+      '-password=pa|ss',
+      '-password=pa<ss',
+      '-password=pa>ss',
+      '-password=pa!ss',
+    ]
+    for (const hostile of hostiles) {
       expect(() => quoteForCmd(hostile)).toThrow(/cmd\.exe/)
       try {
         quoteForCmd(hostile)

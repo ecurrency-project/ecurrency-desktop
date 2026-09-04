@@ -69,11 +69,17 @@ function redact(text, credentials) {
 // Node refuses to spawn .bat/.cmd without a shell (the 2024 argument-injection
 // fix), and cmd.exe then re-splits the command line — so the arguments have to
 // come back quoted. Paths reaching this point contain spaces ('<app>.exe').
+//
+// Quoting is not enough for cmd's own metacharacters: a password containing one
+// of these arrives at the tool truncated, which the signing service reports as
+// a plain authentication failure — ten minutes into a build, with nothing
+// pointing at the real cause. Refuse it up front instead.
 function quoteForCmd(arg) {
-  if (/["%^]/.test(arg)) {
+  if (/["%^&|<>!]/.test(arg)) {
     throw new Error(
-      'Cannot pass an argument containing " % or ^ through cmd.exe. Choose an SSL.com password ' +
-        'without those characters, or point CODESIGNTOOL at a non-batch entry point.',
+      'Cannot pass an argument containing " % ^ & | < > or ! through cmd.exe, which is how a ' +
+        'batch entry point has to be launched. Choose an SSL.com password without those ' +
+        'characters — @ # - . = + are safe.',
     )
   }
   return `"${arg}"`
