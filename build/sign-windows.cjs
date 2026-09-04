@@ -85,16 +85,23 @@ function quoteForCmd(arg) {
   return `"${arg}"`
 }
 
+// The tool locates its bundled runtime and its configuration relative to the
+// working directory rather than to its own location, so it has to be started
+// from where it lives: run from the project root it exits with nothing but
+// 'The system cannot find the path specified'. For a bare name on PATH
+// path.dirname gives '.', which leaves the working directory as it was.
 function runCodeSignTool(tool, args, platform = process.platform) {
   const viaCmd = platform === 'win32' && /\.(bat|cmd)$/i.test(tool)
+  const cwd = path.dirname(tool)
   return viaCmd
-    ? spawnSync([tool, ...args].map(quoteForCmd).join(' '), { shell: true, encoding: 'utf8' })
-    : spawnSync(tool, args, { encoding: 'utf8' })
+    ? spawnSync([tool, ...args].map(quoteForCmd).join(' '), { shell: true, encoding: 'utf8', cwd })
+    : spawnSync(tool, args, { encoding: 'utf8', cwd })
 }
 
 async function sign(configuration) {
   const credentials = readSigningEnv(process.env)
-  const target = configuration.path
+  // Absolute, because the tool runs with its own directory as the working one.
+  const target = path.resolve(configuration.path)
   const name = path.basename(target)
 
   // CodeSignTool writes <output_dir_path>/<basename>, which would collide with
