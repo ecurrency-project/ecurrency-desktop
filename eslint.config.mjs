@@ -28,4 +28,11 @@ export default tseslint.config(
     files: ['src/main/**/*.ts', 'src/preload/**/*.ts', 'electron.vite.config.ts', 'vitest.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    // Build-time hooks run in Node before the app is packaged, and stay
+    // CommonJS because electron-builder requires them at build time.
+    files: ['build/**/*.cjs'],
+    languageOptions: { globals: { ...globals.node } },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
 )
