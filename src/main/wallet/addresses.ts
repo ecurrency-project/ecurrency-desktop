@@ -1,4 +1,5 @@
-import { activeScheme, addressFromPubkey, deriveFalconKeypair, derivePath, nativePathFor, type DerivationScheme, type HDKey, type Network } from '@qbitcoin/crypto'
+import { derivePath, nativePathFor, type DerivationScheme, type HDKey, type Network } from '@qbtc/crypto'
+import { activeScheme, addressFromPubkey, deriveFalconKeypair } from '../brand/crypto'
 
 // HD address derivation. The classical (secp256k1/ECDSA) branch is synchronous;
 // the post-quantum (Falcon-512) branch is async because it runs WASM keygen.

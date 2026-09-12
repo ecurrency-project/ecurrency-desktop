@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { NodeEndpoint } from '@qbitcoin/chain'
+import type { NodeEndpoint } from '@qbtc/chain'
 import type { NodeSettingsStored } from '../../src/main/vault/nodeConfig'
 import { buildEndpoints, primaryPublicUrl } from '../../src/main/vault/nodePool'
 

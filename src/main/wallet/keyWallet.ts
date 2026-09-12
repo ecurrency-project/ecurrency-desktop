@@ -1,19 +1,21 @@
 import {
-  addressFromPubkey,
-  decodeWif,
   falconKeypairFromWifPayload,
   getPublicKey,
   schnorrGetPublicKey,
   serialize,
   SIGHASH,
-  sighashCommitsTokenId,
   signTransaction,
   toHex,
   txid as computeTxid,
   type Algorithm,
   type Network,
   type SigningInput,
-} from '@qbitcoin/crypto'
+} from '@qbtc/crypto'
+import {
+  addressFromPubkey,
+  decodeWif,
+  sighashCommitsTokenId,
+} from '../brand/crypto'
 import type { AddressOps } from '../vault/orchestrator'
 import type { AddressSource } from './AddressSource'
 import type { UnsignedTx } from './buildTx'

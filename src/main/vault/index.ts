@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, nodesFor, type NodeEndpoint } from '@qbitcoin/chain'
-import { addressFromScripthash, decodeAddress, decodeWif, DOWNGRADE, exportAccountXpub, generateMnemonic, hash256, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, toHex, UPGRADE, validateAddress, validateMnemonic, type HDKey, type Network } from '@qbitcoin/crypto'
-import { addressFromXpub } from '@qbitcoin/crypto'
+import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, type NodeEndpoint } from '@qbtc/chain'
+import { generateMnemonic, hash256, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, toHex, validateMnemonic, type HDKey, type Network } from '@qbtc/crypto'
 import { Vault } from '@qbitcoin/vault'
+import { addressFromScripthash, addressFromXpub, decodeAddress, decodeWif, DOWNGRADE, exportAccountXpub, UPGRADE, validateAddress } from '../brand/crypto'
+import { defaultNodesFor } from '../brand/nodes'
+import { PROFILE } from '../brand/profile'
 import type { AddressAlgo, KeyInspection, NodeKind, NodeSettings, NodeStatus, SendPreview, SendResult, UpgradeConvertRequest, UpgradePlanView, VaultStatus, WalletInfo, WatchInput } from '../../shared/protocol'
 import { deriveClassicalAddress } from '../wallet/addresses'
 import { AddressService, type WalletVault } from '../wallet/AddressService'
@@ -86,11 +88,11 @@ export function createWalletCore(): WalletCore {
   // seals every wallet's at-rest stores; it lives at the default wallet's path and
   // outlives active-wallet switches. (v1: one seed wallet; watch wallets reuse this
   // key for their sealed public data.)
-  const vault = new Vault(new FileVaultStorage(join(walletDir(userData, DEFAULT_WALLET_ID), 'vault.json')), { autoLockMs: AUTO_LOCK_MS })
+  const vault = new Vault(new FileVaultStorage(join(walletDir(userData, DEFAULT_WALLET_ID), 'vault.json')), { autoLockMs: AUTO_LOCK_MS, appDataInfo: PROFILE.appDataInfo })
 
   // The public endpoints this build ships for its network (a brand value; may
   // be empty while a network is unlaunched).
-  const publicEndpoints = nodesFor(NETWORK)
+  const publicEndpoints = defaultNodesFor(NETWORK)
   // Node selection (plain config, like the registry) — read at startup so the chain
   // client can be built before any unlock. Slots: a bundled public node, the user's
   // own Esplora REST node (same dialect, different URL), or a community node they

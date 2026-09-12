@@ -1,4 +1,4 @@
-import type { AddressInfo } from '@qbitcoin/chain'
+import type { AddressInfo } from '@qbtc/chain'
 import { describe, expect, it } from 'vitest'
 import { GAP_LIMIT_CHANGE, GAP_LIMIT_RECEIVE, discoverAll, discoverBranch, discoverChain, type AddressLookup, type DiscoveryBranch } from '../../src/main/wallet/discovery'
 

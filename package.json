@@ -29,9 +29,9 @@
     "dist:mac:test": "electron-vite build && electron-builder --mac --config electron-builder.test.yml"
   },
   "dependencies": {
-    "@qbitcoin/chain": "workspace:*",
-    "@qbitcoin/crypto": "workspace:*",
     "@qbitcoin/vault": "workspace:*",
+    "@qbtc/chain": "1.1.0",
+    "@qbtc/crypto": "1.1.0",
     "electron-updater": "^6.3.9",
     "qrcode.react": "4.2.0",
     "react": "19.2.0",
@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
+    "@noble/hashes": "1.7.1",
     "@playwright/test": "1.60.0",
     "@types/node": "22.20.0",
     "@types/react": "19.2.17",

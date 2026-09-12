@@ -1,4 +1,5 @@
-import { activeScheme, decodeAddress, deriveFalconKeypair, derivePath, nativePath, encodeTokenTransfer, masterKeyFromSeed, mnemonicToSeed, SIGHASH, sighash, sighashCommitsTokenId, toHex, TX_TYPE_TOKENS, verifySiglistEntry } from '@qbitcoin/crypto'
+import { derivePath, encodeTokenTransfer, masterKeyFromSeed, mnemonicToSeed, SIGHASH, sighash, toHex, TX_TYPE_TOKENS, verifySiglistEntry } from '@qbtc/crypto'
+import { activeScheme, decodeAddress, deriveFalconKeypair, nativePath, sighashCommitsTokenId } from '../../src/main/brand/crypto'
 import { describe, expect, it } from 'vitest'
 import type { UnsignedTx } from '../../src/main/wallet/buildTx'
 import { buildSignedTransaction, signUnsignedTx, toCryptoTransaction } from '../../src/main/wallet/signTx'

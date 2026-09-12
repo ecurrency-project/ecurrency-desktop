@@ -1,4 +1,5 @@
-import { decodeAddress, encodeTokenTransfer, toHex } from '@qbitcoin/crypto'
+import { encodeTokenTransfer, toHex } from '@qbtc/crypto'
+import { decodeAddress } from '../brand/crypto'
 import type { Algo } from './discovery'
 
 // Pure, key-free transaction assembly — the desktop port of the proven extension

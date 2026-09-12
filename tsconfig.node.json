@@ -3,7 +3,7 @@
   "compilerOptions": {
     "composite": true,
     // Web Crypto types (CryptoKey, SubtleCrypto, crypto.subtle) used by the
-    // vendored crypto package live in the DOM lib. The Electron main process
+    // crypto package and the vault live in the DOM lib. The Electron main process
     // (Node 24 in Electron 41) exposes these as runtime globals, so declaring
     // them here describes the real environment — it is not a polyfill.
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

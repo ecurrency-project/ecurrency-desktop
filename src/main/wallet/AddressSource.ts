@@ -1,4 +1,5 @@
-import { DERIVATION_SCHEMES, addressFromXpub, decodeAddress, parseAccountXpub, type DerivationScheme, type HDKey, type Network } from '@qbitcoin/crypto'
+import { parseAccountXpub, type DerivationScheme, type HDKey, type Network } from '@qbtc/crypto'
+import { DERIVATION_SCHEMES, addressFromXpub, decodeAddress } from '../brand/crypto'
 import { deriveClassicalAddress, deriveFalconAddress } from './addresses'
 import type { Chain, DiscoveryBranch } from './discovery'
 import { indicesFor } from './meta'

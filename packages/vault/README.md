@@ -1,7 +1,7 @@
 # @qbitcoin/vault
 
-Stateful seed-storage layer for the the chain wallet. Sits between
-[`@qbitcoin/crypto`](../crypto) (stateless primitives) and the
+Stateful seed-storage layer for the wallet. Sits between
+`@qbtc/crypto` (stateless primitives, from npm) and the
 extension's background service worker (which wants a single object to
 ask "give me the signing key" or "lock the wallet now").
 
@@ -41,7 +41,9 @@ the master seed bytes are zero-filled before release.
 ```typescript
 import { Vault, InMemoryVaultStorage } from '@qbitcoin/vault';
 
-const vault = new Vault(new InMemoryVaultStorage());
+// appDataInfo: HKDF label of the app-data key — a chain value from the
+// host's chain profile, frozen once data has been sealed under it.
+const vault = new Vault(new InMemoryVaultStorage(), { appDataInfo: 'mychain/app-data/v1' });
 
 // First-time setup
 await vault.create('abandon abandon … about', 'my password');
@@ -51,15 +53,15 @@ await vault.unlock('my password');
 
 // Sign — only works while unlocked
 const masterKey = vault.getMasterKey();   // throws WalletLockedError if locked
-// ... use masterKey with @qbitcoin/crypto's derivePath / addressFromPubkey
+// ... use masterKey with @qbtc/crypto's derivePath / addressFromPubkey
 
 // Manual lock
 vault.lock();
 
 // Auto-lock fires after 5 min of inactivity by default — every
 // getMasterKey() call resets the timer. Configurable via:
-const customVault = new Vault(storage, { autoLockMs: 60_000 }); // 1 min
-const noAutolock  = new Vault(storage, { autoLockMs: 0 });       // disabled
+const customVault = new Vault(storage, { appDataInfo, autoLockMs: 60_000 }); // 1 min
+const noAutolock  = new Vault(storage, { appDataInfo, autoLockMs: 0 });       // disabled
 
 // Listen to state changes (for UI updates).
 const off = vault.on((event) => console.log(event.type, event));

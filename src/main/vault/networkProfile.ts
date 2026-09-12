@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Network } from '@qbitcoin/crypto'
+import type { Network } from '@qbtc/crypto'
 
 // The network PROFILE: which chain this installation runs on. A plain
 // (unsealed) file in the REAL userData root — it must be readable before

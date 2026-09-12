@@ -9,8 +9,8 @@ import {
   type BtcOutPoint,
   type BtcTxOutput,
   type HDKey,
-} from '@qbitcoin/crypto'
-import type { BtcHistoryTx, BtcUtxo } from '@qbitcoin/chain'
+} from '@qbtc/crypto'
+import type { BtcHistoryTx, BtcUtxo } from '@qbtc/chain'
 import { deriveBtcStagingAddress, deriveBtcStagingKey } from './btcStaging'
 
 // The BTC→native upgrade flow, main-process core (design:

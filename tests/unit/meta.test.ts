@@ -1,4 +1,4 @@
-import { META_V1_SCHEME_ID } from '@qbitcoin/crypto'
+import { META_V1_SCHEME_ID } from '../../src/main/brand/crypto'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_META, indicesFor, WalletMetaStore, withIndices, ZERO_INDICES, type WalletMeta } from '../../src/main/wallet/meta'
 

@@ -1,4 +1,4 @@
-import type { Network, NodeEndpoint } from '@qbitcoin/chain'
+import type { Network, NodeEndpoint } from '@qbtc/chain'
 import type { NodeSettingsStored } from './nodeConfig'
 
 // How the persisted node selection becomes the chain client's failover pool.

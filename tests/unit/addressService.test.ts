@@ -1,4 +1,5 @@
-import { activeScheme, masterKeyFromSeed, mnemonicToSeed } from '@qbitcoin/crypto'
+import { masterKeyFromSeed, mnemonicToSeed } from '@qbtc/crypto'
+import { activeScheme } from '../../src/main/brand/crypto'
 import { describe, expect, it } from 'vitest'
 import { AddressService, type WalletVault } from '../../src/main/wallet/AddressService'
 import { WalletMetaStore } from '../../src/main/wallet/meta'

@@ -1,4 +1,4 @@
-import type { AddressInfo, ChainTx, TokenInfo } from '@qbitcoin/chain'
+import type { AddressInfo, ChainTx, TokenInfo } from '@qbtc/chain'
 import { describe, expect, it } from 'vitest'
 import { ChainService, type ChainBackend } from '../../src/main/wallet/ChainService'
 import type { DiscoveryBranch } from '../../src/main/wallet/discovery'

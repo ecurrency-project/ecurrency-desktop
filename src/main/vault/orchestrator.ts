@@ -51,7 +51,7 @@ export interface VaultLike {
 }
 
 // Stateless mnemonic helpers, injected so the orchestrator (and its tests) need
-// no real cryptography. In main these come from @qbitcoin/crypto.
+// no real cryptography. In main these come from @qbtc/crypto.
 export interface MnemonicTools {
   generateMnemonic(): string
   validateMnemonic(phrase: string): boolean

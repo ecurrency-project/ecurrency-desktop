@@ -1,5 +1,5 @@
-import type { Utxo } from '@qbitcoin/chain'
-import type { Network } from '@qbitcoin/crypto'
+import type { Utxo } from '@qbtc/chain'
+import type { Network } from '@qbtc/crypto'
 import { ChainService, type ChainBackend } from './ChainService'
 import { createKeyAddressSource, signUnsignedTxWithKey, type ImportedKey } from './keyWallet'
 import { SendService } from './SendService'

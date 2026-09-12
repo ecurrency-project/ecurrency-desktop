@@ -1,4 +1,4 @@
-import { btcP2pkhAddressForPubkey, derivePath, type BtcNetwork, type HDKey } from '@qbitcoin/crypto'
+import { btcP2pkhAddressForPubkey, derivePath, type BtcNetwork, type HDKey } from '@qbtc/crypto'
 
 // Staging-key derivation for the BTC→native upgrade flow.
 //

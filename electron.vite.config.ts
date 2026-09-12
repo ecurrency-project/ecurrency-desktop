@@ -32,9 +32,12 @@ function injectCspMeta(): Plugin {
 // normal Vite + React app. The Vault and crypto will live in `main` in Phase 1.
 export default defineConfig({
   main: {
-    // Bundle the workspace @qbitcoin/* packages into main (they ship TypeScript
-    // source, which Node can't require if externalized). Real npm deps stay external.
-    plugins: [externalizeDepsPlugin({ exclude: ['@qbitcoin/crypto', '@qbitcoin/vault', '@qbitcoin/chain'] })],
+    // Bundle the chain packages into main: the workspace vault ships TypeScript
+    // source (Node can't require it if externalized), and @qbtc/* ride along so
+    // the Falcon WASM glue they import dynamically lands in the bundle (see
+    // wallet/falconWasm.ts for how the .wasm itself is located). Real npm deps
+    // stay external.
+    plugins: [externalizeDepsPlugin({ exclude: ['@qbtc/crypto', '@qbtc/chain', '@qbitcoin/vault'] })],
     build: {
       rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } },
     },

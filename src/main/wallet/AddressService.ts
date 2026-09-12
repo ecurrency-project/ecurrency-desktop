@@ -1,4 +1,5 @@
-import { activeScheme, type HDKey, type Network } from '@qbitcoin/crypto'
+import { type HDKey, type Network } from '@qbtc/crypto'
+import { activeScheme } from '../brand/crypto'
 import type { AddressAlgo, ReceiveAddressEntry } from '../../shared/protocol'
 import { deriveClassicalAddress, deriveFalconAddress } from './addresses'
 import { indicesFor, withIndices, type SchemeIndices, type WalletMeta, type WalletMetaStore } from './meta'

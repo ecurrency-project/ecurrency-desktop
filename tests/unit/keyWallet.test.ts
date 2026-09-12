@@ -1,15 +1,17 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   SchnorrDisabledError,
-  addressFromPubkey,
-  encodeWif,
   fromHex,
   getPublicKey,
   schnorrGetPublicKey,
   scriptP2PK,
   setSchnorrEnabled,
   toHex,
-} from '@qbitcoin/crypto'
+} from '@qbtc/crypto'
+import {
+  addressFromPubkey,
+  encodeWif,
+} from '../../src/main/brand/crypto'
 import type { Algo, UnsignedTx } from '../../src/main/wallet/buildTx'
 import {
   createKeyAddressSource,
