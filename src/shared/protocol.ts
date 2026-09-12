@@ -384,7 +384,7 @@ export interface ReceiveAddressEntry {
 // Which key algorithm an address uses: classical (secp256k1 ECDSA or Schnorr)
 // or post-quantum (Falcon-512). Schnorr appears only via imported keys and is
 // feature-gated in main; HD wallets derive ECDSA + Falcon branches.
-// Mirrors @qbitcoin/crypto's Algorithm — deliberately re-declared here so the
+// Mirrors @qbtc/crypto's Algorithm — deliberately re-declared here so the
 // IPC contract stays dependency-free for the renderer.
 export type AddressAlgo = 'ecdsa' | 'schnorr' | 'falcon512'
 

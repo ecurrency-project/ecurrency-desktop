@@ -1,5 +1,6 @@
-import type { AddressInfo, Utxo } from '@qbitcoin/chain'
-import { addressFromPubkey, encodeWif, fromHex, getPublicKey, scriptP2PK, toHex } from '@qbitcoin/crypto'
+import type { AddressInfo, Utxo } from '@qbtc/chain'
+import { fromHex, getPublicKey, scriptP2PK, toHex } from '@qbtc/crypto'
+import { addressFromPubkey, encodeWif } from '../../src/main/brand/crypto'
 import { describe, expect, it } from 'vitest'
 import { importedKeyFromStored, type ImportedKey } from '../../src/main/wallet/keyWallet'
 import { createSweepSession, type SweepBackend } from '../../src/main/wallet/sweep'

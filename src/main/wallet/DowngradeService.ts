@@ -1,4 +1,4 @@
-import type { ChainTx, Outspend } from '@qbitcoin/chain'
+import type { ChainTx, Outspend } from '@qbtc/chain'
 import {
   btcAddressFromScriptPubKey,
   buildFreezeOutput,
@@ -17,7 +17,7 @@ import {
   TX_TYPE_STANDARD,
   type BtcNetwork,
   type Transaction,
-} from '@qbitcoin/crypto'
+} from '@qbtc/crypto'
 import { buildSend, estimateSendFee, feeForInputs, type BuiltSend, type SpendableUtxo, type UnsignedTx } from './buildTx'
 import type { SignedTx } from './signTx'
 
@@ -39,7 +39,7 @@ import type { SignedTx } from './signTx'
 // here derives from the node's total_coins, which approximates the upgraded
 // total. The estimate is labelled "≈" in the UI and never signed.
 
-/** Consensus parameters (brand values, from DOWNGRADE in @qbitcoin/crypto). */
+/** Consensus parameters (brand values — DOWNGRADE from the chain profile). */
 export interface DowngradeParams {
   /** Falcon-512 pubkeys of the freeze federation (2-of-3 in the freeze IF). */
   readonly freezePubkeys: readonly Uint8Array[]

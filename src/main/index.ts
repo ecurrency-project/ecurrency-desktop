@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, Menu, session, shell, type WebContents } from 'electron'
-import { setSchnorrEnabled } from '@qbitcoin/crypto'
+import { setSchnorrEnabled } from '@qbtc/crypto'
 import { PRODUCTION_CSP } from '../shared/csp'
 import { WALLET_EVENT_CHANNEL, type VaultStatus } from '../shared/protocol'
 import { registerWalletIpc } from './ipc/router'

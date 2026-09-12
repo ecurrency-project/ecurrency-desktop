@@ -1,4 +1,4 @@
-import type { Algorithm } from '@qbitcoin/crypto'
+import type { Algorithm } from '@qbtc/crypto'
 import type { BlobStore, Sealer } from './meta'
 
 // An imported single private key (WIF), sealed at rest with the app-data key —

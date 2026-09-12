@@ -1,4 +1,4 @@
-import type { AddressInfo, Utxo } from '@qbitcoin/chain'
+import type { AddressInfo, Utxo } from '@qbtc/chain'
 import { describe, expect, it } from 'vitest'
 import { gatherFromActive, gatherSpendable, type SpendableBackend } from '../../src/main/wallet/spendable'
 

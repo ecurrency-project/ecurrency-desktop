@@ -12,7 +12,7 @@
 // indices belong to the scheme that was active at write time
 // (META_V1_SCHEME_ID); every other scheme starts at zero.
 
-import { META_V1_SCHEME_ID } from '@qbitcoin/crypto'
+import { META_V1_SCHEME_ID } from '../brand/crypto'
 
 /** Issued-index floors for one derivation scheme's four HD chains. */
 export interface SchemeIndices {

@@ -1,5 +1,5 @@
-import type { AddressInfo } from '@qbitcoin/chain'
-import type { Algorithm } from '@qbitcoin/crypto'
+import type { AddressInfo } from '@qbtc/chain'
+import type { Algorithm } from '@qbtc/crypto'
 
 export type Chain = 0 | 1
 // May be async: the classical branch derives synchronously, the Falcon (PQ)

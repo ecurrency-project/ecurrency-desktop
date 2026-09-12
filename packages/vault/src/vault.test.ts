@@ -7,24 +7,27 @@ import {
   VaultExistsError,
   WalletLockedError,
 } from './errors';
-import { sealVault } from '@qbitcoin/crypto';
+import { AppDataError, sealVault } from '@qbtc/crypto';
 import { InMemoryVaultStorage } from './storage';
-import { Vault, type VaultEvent } from './vault';
+import { Vault, type VaultConfig, type VaultEvent } from './vault';
 
 // A valid 12-word BIP-39 phrase from Trezor's canonical test vectors.
 const MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'correct horse battery staple';
+/** The HKDF label a host takes from its chain profile. */
+const APP_DATA_INFO = 'test/app-data/v1';
+const cfg = (autoLockMs: number): VaultConfig => ({ autoLockMs, appDataInfo: APP_DATA_INFO });
 
 describe('Vault — lifecycle (empty → unlocked)', () => {
   it('starts in empty state when storage is empty', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     expect(await v.getStatus()).toBe('empty');
     expect(v.isUnlocked()).toBe(false);
   });
 
   it('create() leaves vault in unlocked state', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     expect(await v.getStatus()).toBe('unlocked');
     expect(v.isUnlocked()).toBe(true);
@@ -32,7 +35,7 @@ describe('Vault — lifecycle (empty → unlocked)', () => {
 
   it('create() writes the encrypted blob to storage', async () => {
     const storage = new InMemoryVaultStorage();
-    const v = new Vault(storage, { autoLockMs: 0 });
+    const v = new Vault(storage, cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     const blob = await storage.read();
     expect(blob).not.toBeNull();
@@ -42,25 +45,25 @@ describe('Vault — lifecycle (empty → unlocked)', () => {
   });
 
   it('create() rejects invalid mnemonic', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await expect(v.create('not a real mnemonic', PASSWORD)).rejects.toThrow(
       InvalidMnemonicError,
     );
   });
 
   it('create() trims whitespace', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(`  ${MNEMONIC}\n`, PASSWORD);
     expect(await v.revealMnemonic(PASSWORD)).toBe(MNEMONIC);
   });
 
   it('create() refuses to overwrite an existing vault', async () => {
     const storage = new InMemoryVaultStorage();
-    const v = new Vault(storage, { autoLockMs: 0 });
+    const v = new Vault(storage, cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
 
-    const v2 = new Vault(storage, { autoLockMs: 0 });
+    const v2 = new Vault(storage, cfg(0));
     await expect(v2.create(MNEMONIC, PASSWORD)).rejects.toThrow(
       VaultExistsError,
     );
@@ -69,7 +72,7 @@ describe('Vault — lifecycle (empty → unlocked)', () => {
 
 describe('Vault — lock + unlock', () => {
   it('lock() takes unlocked vault to locked state', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     expect(await v.getStatus()).toBe('locked');
@@ -78,12 +81,12 @@ describe('Vault — lock + unlock', () => {
 
   it('unlock() with correct password restores access', async () => {
     const storage = new InMemoryVaultStorage();
-    const v = new Vault(storage, { autoLockMs: 0 });
+    const v = new Vault(storage, cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
 
     // Use a fresh Vault instance to simulate SW restart.
-    const v2 = new Vault(storage, { autoLockMs: 0 });
+    const v2 = new Vault(storage, cfg(0));
     expect(await v2.getStatus()).toBe('locked');
     await v2.unlock(PASSWORD);
     expect(v2.isUnlocked()).toBe(true);
@@ -92,7 +95,7 @@ describe('Vault — lock + unlock', () => {
 
   it('unlock() rejects wrong password with InvalidPasswordError', async () => {
     const storage = new InMemoryVaultStorage();
-    const v = new Vault(storage, { autoLockMs: 0 });
+    const v = new Vault(storage, cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     await expect(v.unlock('wrong password')).rejects.toThrow(
@@ -101,12 +104,12 @@ describe('Vault — lock + unlock', () => {
   });
 
   it('unlock() on empty storage throws VaultEmptyError', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await expect(v.unlock(PASSWORD)).rejects.toThrow(VaultEmptyError);
   });
 
   it('unlock() is idempotent when already unlocked', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     // Second unlock should not throw.
     await v.unlock(PASSWORD);
@@ -114,7 +117,7 @@ describe('Vault — lock + unlock', () => {
   });
 
   it('lock() is idempotent', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     v.lock();
@@ -124,7 +127,7 @@ describe('Vault — lock + unlock', () => {
 
 describe('Vault — getMasterKey + revealMnemonic', () => {
   it('returns a master key when unlocked', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     const key = v.getMasterKey();
     expect(key.privateKey).toBeDefined();
@@ -132,7 +135,7 @@ describe('Vault — getMasterKey + revealMnemonic', () => {
   });
 
   it('returns the same key across calls (same seed)', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     const a = v.getMasterKey().privateKey!;
     const b = v.getMasterKey().privateKey!;
@@ -140,21 +143,21 @@ describe('Vault — getMasterKey + revealMnemonic', () => {
   });
 
   it('getMasterKey() throws WalletLockedError when locked', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     expect(() => v.getMasterKey()).toThrow(WalletLockedError);
   });
 
   it('revealMnemonic() returns the mnemonic when unlocked + correct password', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     // The mnemonic is NOT cached — reveal re-decrypts the blob.
     expect(await v.revealMnemonic(PASSWORD)).toBe(MNEMONIC);
   });
 
   it('revealMnemonic() rejects a wrong password with InvalidPasswordError', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     await expect(v.revealMnemonic('wrong password')).rejects.toThrow(
       InvalidPasswordError,
@@ -162,7 +165,7 @@ describe('Vault — getMasterKey + revealMnemonic', () => {
   });
 
   it('revealMnemonic() throws WalletLockedError when locked', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     await expect(v.revealMnemonic(PASSWORD)).rejects.toThrow(WalletLockedError);
@@ -172,7 +175,7 @@ describe('Vault — getMasterKey + revealMnemonic', () => {
 describe('Vault — destroy + changePassword', () => {
   it('destroy() removes blob and resets state to empty', async () => {
     const storage = new InMemoryVaultStorage();
-    const v = new Vault(storage, { autoLockMs: 0 });
+    const v = new Vault(storage, cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     await v.destroy();
     expect(await v.getStatus()).toBe('empty');
@@ -181,7 +184,7 @@ describe('Vault — destroy + changePassword', () => {
 
   it('changePassword() lets the new password unlock the vault', async () => {
     const storage = new InMemoryVaultStorage();
-    const v = new Vault(storage, { autoLockMs: 0 });
+    const v = new Vault(storage, cfg(0));
     await v.create(MNEMONIC, PASSWORD);
 
     await v.changePassword(PASSWORD, 'new password');
@@ -193,14 +196,14 @@ describe('Vault — destroy + changePassword', () => {
   });
 
   it('changePassword() preserves the unlocked state', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     await v.changePassword(PASSWORD, 'new password');
     expect(v.isUnlocked()).toBe(true);
   });
 
   it('changePassword() rejects wrong old password', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     await expect(v.changePassword('wrong', 'new password')).rejects.toThrow(
       InvalidPasswordError,
@@ -208,7 +211,7 @@ describe('Vault — destroy + changePassword', () => {
   });
 
   it('changePassword() on empty storage throws VaultEmptyError', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await expect(v.changePassword(PASSWORD, 'new')).rejects.toThrow(
       VaultEmptyError,
     );
@@ -226,14 +229,14 @@ describe('Vault — KDF migration', () => {
     await storage.write(JSON.stringify(legacy));
     expect(JSON.parse((await storage.read())!).kdf).toBe('scrypt');
 
-    const v = new Vault(storage, { autoLockMs: 0 });
+    const v = new Vault(storage, cfg(0));
     await v.unlock(PASSWORD);
     expect(v.isUnlocked()).toBe(true);
     expect(await v.revealMnemonic(PASSWORD)).toBe(MNEMONIC);
 
     // Re-sealed to Argon2id at rest, and still unlockable afterwards.
     expect(JSON.parse((await storage.read())!).kdf).toBe('argon2id');
-    const v2 = new Vault(storage, { autoLockMs: 0 });
+    const v2 = new Vault(storage, cfg(0));
     await v2.unlock(PASSWORD);
     expect(v2.isUnlocked()).toBe(true);
   });
@@ -241,7 +244,7 @@ describe('Vault — KDF migration', () => {
 
 describe('Vault — events', () => {
   it('emits "created" + "unlocked" on create()', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     const events: VaultEvent[] = [];
     v.on((e) => events.push(e));
     await v.create(MNEMONIC, PASSWORD);
@@ -249,7 +252,7 @@ describe('Vault — events', () => {
   });
 
   it('emits "locked" on lock()', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     const events: VaultEvent[] = [];
     v.on((e) => events.push(e));
@@ -258,7 +261,7 @@ describe('Vault — events', () => {
   });
 
   it('does NOT emit "locked" when calling lock() on already-locked vault', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     const events: VaultEvent[] = [];
@@ -268,7 +271,7 @@ describe('Vault — events', () => {
   });
 
   it('emits "unlocked" on unlock() (but not on idempotent re-unlock)', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     const events: VaultEvent[] = [];
@@ -279,7 +282,7 @@ describe('Vault — events', () => {
   });
 
   it('emits "destroyed" on destroy()', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     const events: VaultEvent[] = [];
     v.on((e) => events.push(e));
@@ -290,7 +293,7 @@ describe('Vault — events', () => {
   });
 
   it('unsubscribe stops further events', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     const events: VaultEvent[] = [];
     const off = v.on((e) => events.push(e));
     await v.create(MNEMONIC, PASSWORD);
@@ -309,7 +312,7 @@ describe('Vault — autolock timer', () => {
   });
 
   it('autolocks after configured timeout', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 1000 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(1000));
     await v.create(MNEMONIC, PASSWORD);
     expect(v.isUnlocked()).toBe(true);
     vi.advanceTimersByTime(1000);
@@ -317,7 +320,7 @@ describe('Vault — autolock timer', () => {
   });
 
   it('emits locked with reason="timeout" on autolock', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 1000 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(1000));
     const events: VaultEvent[] = [];
     v.on((e) => events.push(e));
     await v.create(MNEMONIC, PASSWORD);
@@ -327,7 +330,7 @@ describe('Vault — autolock timer', () => {
   });
 
   it('getMasterKey() does NOT reset the timer (background work must not hold the wallet open)', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 1000 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(1000));
     await v.create(MNEMONIC, PASSWORD);
     vi.advanceTimersByTime(800);
     v.getMasterKey(); // must NOT reset — derivation is often background-driven
@@ -336,7 +339,7 @@ describe('Vault — autolock timer', () => {
   });
 
   it('noteActivity() resets the timer', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 1000 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(1000));
     await v.create(MNEMONIC, PASSWORD);
     vi.advanceTimersByTime(800);
     v.noteActivity(); // genuine user activity resets the countdown
@@ -347,7 +350,7 @@ describe('Vault — autolock timer', () => {
   });
 
   it('noteActivity() is a no-op when locked (does not resurrect or throw)', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 1000 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(1000));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     expect(() => v.noteActivity()).not.toThrow();
@@ -355,14 +358,14 @@ describe('Vault — autolock timer', () => {
   });
 
   it('autoLockMs=0 disables the timer', async () => {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     vi.advanceTimersByTime(1_000_000);
     expect(v.isUnlocked()).toBe(true);
   });
 
   it('rejects negative autoLockMs', () => {
-    expect(() => new Vault(new InMemoryVaultStorage(), { autoLockMs: -1 })).toThrow(
+    expect(() => new Vault(new InMemoryVaultStorage(), cfg(-1))).toThrow(
       RangeError,
     );
   });
@@ -377,7 +380,7 @@ describe('Vault — unlock throttle', () => {
   });
 
   async function lockedVault(): Promise<Vault> {
-    const v = new Vault(new InMemoryVaultStorage(), { autoLockMs: 0 });
+    const v = new Vault(new InMemoryVaultStorage(), cfg(0));
     await v.create(MNEMONIC, PASSWORD);
     v.lock();
     return v;
@@ -421,3 +424,21 @@ describe('Vault — unlock throttle', () => {
     expect(v.isUnlocked()).toBe(true);
   });
 }, 30_000);
+
+describe('Vault — app-data label binding', () => {
+  it('binds the app-data key to the configured HKDF label', async () => {
+    const storage = new InMemoryVaultStorage();
+    const a = new Vault(storage, cfg(0));
+    await a.create(MNEMONIC, PASSWORD);
+    const blob = await a.sealData('address book');
+    expect(await a.openData(blob)).toBe('address book');
+    // The same seed under another label derives a different key.
+    const b = new Vault(storage, { autoLockMs: 0, appDataInfo: 'other/app-data/v1' });
+    await b.unlock(PASSWORD);
+    await expect(b.openData(blob)).rejects.toThrow(AppDataError);
+  });
+
+  it('rejects an empty label', () => {
+    expect(() => new Vault(new InMemoryVaultStorage(), { autoLockMs: 0, appDataInfo: '' })).toThrow(RangeError);
+  });
+});

@@ -1,13 +1,9 @@
 import {
-  activeScheme,
-  deriveFalconKeypair,
   derivePath,
   nativePathFor,
   fromHex,
-  requireScheme,
   serialize,
   SIGHASH,
-  sighashCommitsTokenId,
   signTransaction,
   toHex,
   TX_TYPE_STANDARD,
@@ -19,7 +15,13 @@ import {
   type Transaction,
   type TxInput,
   type TxOutput,
-} from '@qbitcoin/crypto'
+} from '@qbtc/crypto'
+import {
+  activeScheme,
+  deriveFalconKeypair,
+  requireScheme,
+  sighashCommitsTokenId,
+} from '../brand/crypto'
 import type { UnsignedTx } from './buildTx'
 
 export interface SignedTx {

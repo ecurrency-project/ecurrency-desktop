@@ -8,15 +8,15 @@ importers:
 
   .:
     dependencies:
-      '@qbitcoin/chain':
-        specifier: workspace:*
-        version: link:packages/chain
-      '@qbitcoin/crypto':
-        specifier: workspace:*
-        version: link:packages/crypto
       '@qbitcoin/vault':
         specifier: workspace:*
         version: link:packages/vault
+      '@qbtc/chain':
+        specifier: 1.1.0
+        version: 1.1.0
+      '@qbtc/crypto':
+        specifier: 1.1.0
+        version: 1.1.0
       electron-updater:
         specifier: ^6.3.9
         version: 6.8.9
@@ -33,6 +33,9 @@ importers:
       '@eslint/js':
         specifier: 9.39.4
         version: 9.39.4
+      '@noble/hashes':
+        specifier: 1.7.1
+        version: 1.7.1
       '@playwright/test':
         specifier: 1.60.0
         version: 1.60.0
@@ -79,51 +82,11 @@ importers:
         specifier: 3.2.6
         version: 3.2.6(@types/debug@4.1.13)(@types/node@22.20.0)(jiti@2.7.0)
 
-  packages/chain:
-    devDependencies:
-      '@types/node':
-        specifier: 24.10.1
-        version: 24.10.1
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: 3.0.5
-        version: 3.0.5(@types/debug@4.1.13)(@types/node@24.10.1)(jiti@2.7.0)
-
-  packages/crypto:
-    dependencies:
-      '@noble/curves':
-        specifier: 1.8.1
-        version: 1.8.1
-      '@noble/hashes':
-        specifier: 1.7.1
-        version: 1.7.1
-      '@scure/base':
-        specifier: 1.2.4
-        version: 1.2.4
-      '@scure/bip32':
-        specifier: 1.6.2
-        version: 1.6.2
-      '@scure/bip39':
-        specifier: 1.5.4
-        version: 1.5.4
-    devDependencies:
-      '@types/node':
-        specifier: 24.10.1
-        version: 24.10.1
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: 3.0.5
-        version: 3.0.5(@types/debug@4.1.13)(@types/node@24.10.1)(jiti@2.7.0)
-
   packages/vault:
     dependencies:
-      '@qbitcoin/crypto':
-        specifier: workspace:*
-        version: link:../crypto
+      '@qbtc/crypto':
+        specifier: 1.1.0
+        version: 1.1.0
     devDependencies:
       '@types/chrome':
         specifier: 0.0.299
@@ -705,6 +668,12 @@ packages:
     resolution: {integrity: sha512-O71yZIbAh/PxDMNGns37GHBIfrVkEVyn+AXyIa5dOTfb4/xNvRWV+Vv/NMbNCtODB/pO7vLlF2OTmMVLhmr7Ag==}
     engines: {node: '>=18'}
     hasBin: true
+
+  '@qbtc/chain@1.1.0':
+    resolution: {integrity: sha512-RdaQ20WgwFJRzdT0Xz6ByL4VhKabS5jM9kR8pxKat/nXGMbkkETnbsIR0upSE+PVwnm4CIgXk/+wfa5bcv59Bg==}
+
+  '@qbtc/crypto@1.1.0':
+    resolution: {integrity: sha512-dwJudICN0GQruC34KRha64phKOgCUMM4KTpVX+JC4YUfO2F3rxk1l6C96KDKqEOzRB8X0Zho48ElYz2DzDJjUw==}
 
   '@rolldown/pluginutils@1.0.0-rc.3':
     resolution: {integrity: sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q==}
@@ -3066,6 +3035,16 @@ snapshots:
   '@playwright/test@1.60.0':
     dependencies:
       playwright: 1.60.0
+
+  '@qbtc/chain@1.1.0': {}
+
+  '@qbtc/crypto@1.1.0':
+    dependencies:
+      '@noble/curves': 1.8.1
+      '@noble/hashes': 1.7.1
+      '@scure/base': 1.2.4
+      '@scure/bip32': 1.6.2
+      '@scure/bip39': 1.5.4
 
   '@rolldown/pluginutils@1.0.0-rc.3': {}
 

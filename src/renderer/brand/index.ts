@@ -36,7 +36,7 @@ export interface BrandConfig {
   nodeRestPort: number
   /** Source-chain upgrade flow (e.g. BTC→native conversion), or null when
    *  this brand has none — the Convert screen and nav entry stay hidden.
-   *  Consensus values live in the crypto package (UPGRADE); this is only
+   *  Consensus values live in the chain profile (main/brand/profile.ts); this is only
    *  the renderer-facing presentation. */
   upgrade: {
     /**

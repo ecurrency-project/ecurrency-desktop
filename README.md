@@ -26,9 +26,9 @@ The decrypted seed lives only in the Electron **main** process; the **renderer**
 
 ## Get the code
 
-The shared `@qbitcoin/*` packages (`crypto`, `vault`, `chain`) are vendored in this
-repo under `packages/` — the app owns them, so there is no submodule or external
-package dependency to set up. Just clone:
+The crypto and chain layers come from npm as `@qbtc/crypto` and `@qbtc/chain`
+(exact pins); the vault package is vendored under `packages/vault`. There is no
+submodule to set up. Just clone:
 
 ```bash
 git clone <repo-url>
@@ -39,7 +39,7 @@ cd <repo>
 
 ```bash
 corepack enable      # makes the pinned pnpm available
-pnpm install         # links packages/* into the workspace
+pnpm install         # installs @qbtc/* and links packages/vault into the workspace
 ```
 
 ## Develop
@@ -129,7 +129,7 @@ src/
   shared/      the typed IPC protocol shared by main + preload
 tests/unit/    vitest (pure logic)
 tests/e2e/     Playwright (drives the built Electron app)
-packages/      vendored @qbitcoin/* packages (crypto, vault, chain)
+packages/      the vendored vault package (crypto and chain come from npm as @qbtc/*)
 resources/     build resources (installer icons)
 ```
 

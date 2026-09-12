@@ -22,7 +22,7 @@ import {
   validateMnemonic,
   VaultAuthError,
   type VaultBlob,
-} from '@qbitcoin/crypto';
+} from '@qbtc/crypto';
 import {
   InvalidMnemonicError,
   InvalidPasswordError,
@@ -58,6 +58,14 @@ export interface VaultConfig {
    * Default: 5 minutes.
    */
   readonly autoLockMs?: number;
+  /**
+   * HKDF `info` label of the app-data encryption key ({@link Vault.sealData}).
+   * A chain value the host takes from its chain profile (the profile's
+   * `appDataInfo`) — the vault carries no chain constants of its own.
+   * Frozen once shipped: data sealed under one label is unreadable under
+   * another.
+   */
+  readonly appDataInfo: string;
 }
 
 // ─── State + events ──────────────────────────────────────────────────
@@ -85,6 +93,7 @@ export class Vault {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly listeners: Set<VaultListener> = new Set();
   private readonly autoLockMs: number;
+  private readonly appDataInfo: string;
   // Unlock-throttle state (in-memory): consecutive wrong-password count and the
   // timestamp until which further unlock attempts are refused.
   private failedUnlocks = 0;
@@ -96,12 +105,16 @@ export class Vault {
     // 'wxt/utils/storage'` — even in workspace packages outside the
     // extension itself.
     private readonly store: VaultStorage,
-    config: VaultConfig = {},
+    config: VaultConfig,
   ) {
     this.autoLockMs = config.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
     if (this.autoLockMs < 0) {
       throw new RangeError(`autoLockMs must be >= 0, got ${this.autoLockMs}`);
     }
+    if (config.appDataInfo.length === 0) {
+      throw new RangeError('appDataInfo must not be empty');
+    }
+    this.appDataInfo = config.appDataInfo;
   }
 
   // ─── State inspection ──────────────────────────────────────────────
@@ -295,14 +308,14 @@ export class Vault {
 
   /**
    * Encrypt non-key local data (e.g. the address book) at rest with a key
-   * derived from the seed (HKDF; see @qbitcoin/crypto appData). Available only
+   * derived from the seed (HKDF; see @qbtc/crypto appData). Available only
    * when unlocked; the derived key never leaves the background and is wiped
    * after use. Does NOT reset the autolock timer — reading the address book
    * shouldn't extend the unlock window the way a signing operation does.
    */
   async sealData(plaintext: string): Promise<string> {
     if (this.masterSeed === null) throw new WalletLockedError();
-    const key = deriveAppDataKey(this.masterSeed);
+    const key = deriveAppDataKey(this.masterSeed, this.appDataInfo);
     try {
       return await sealAppData(key, new TextEncoder().encode(plaintext));
     } finally {
@@ -317,7 +330,7 @@ export class Vault {
    */
   async openData(blob: string): Promise<string> {
     if (this.masterSeed === null) throw new WalletLockedError();
-    const key = deriveAppDataKey(this.masterSeed);
+    const key = deriveAppDataKey(this.masterSeed, this.appDataInfo);
     try {
       return new TextDecoder().decode(await openAppData(key, blob));
     } finally {

@@ -1,5 +1,5 @@
-# The desktop app (repo root) is the workspace root. The shared eCurrency
-# packages (crypto, vault, chain) are vendored in-repo under packages/ — this
-# app owns them; there is no external submodule or registry dependency.
+# The desktop app (repo root) is the workspace root. The vault package is
+# vendored in-repo under packages/; the crypto and chain layers come from npm
+# as @qbtc/crypto and @qbtc/chain (exact pins in package.json).
 packages:
   - "packages/*"

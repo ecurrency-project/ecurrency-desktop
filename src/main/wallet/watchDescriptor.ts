@@ -1,13 +1,15 @@
 import {
-  DERIVATION_SCHEMES,
-  decodeAddress,
   exportAccountXpubFor,
   isValidAccountXpub,
-  META_V1_SCHEME_ID,
-  validateAddress,
   type HDKey,
   type Network,
-} from '@qbitcoin/crypto'
+} from '@qbtc/crypto'
+import {
+  DERIVATION_SCHEMES,
+  decodeAddress,
+  META_V1_SCHEME_ID,
+  validateAddress,
+} from '../brand/crypto'
 import { deriveFalconAddress } from './addresses'
 import { indicesFor, type WalletMeta } from './meta'
 

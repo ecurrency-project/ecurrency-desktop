@@ -1,4 +1,5 @@
-import { activeScheme, addressFromScripthash, exportAccountXpub, masterKeyFromSeed } from '@qbitcoin/crypto'
+import { masterKeyFromSeed } from '@qbtc/crypto'
+import { activeScheme, addressFromScripthash, exportAccountXpub } from '../../src/main/brand/crypto'
 import { describe, expect, it } from 'vitest'
 import {
   encodeWatchDescriptor,

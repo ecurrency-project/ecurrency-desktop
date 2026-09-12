@@ -1,4 +1,4 @@
-import type { Utxo } from '@qbitcoin/chain'
+import type { Utxo } from '@qbtc/chain'
 import type { SpendableUtxo } from './buildTx'
 import { discoverAll, isActive, type AddressLookup, type Algo, type DeriveAddress, type DiscoveredAddress } from './discovery'
 

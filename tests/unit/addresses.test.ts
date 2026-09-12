@@ -1,4 +1,5 @@
-import { decodeAddress, masterKeyFromSeed, mnemonicToSeed, validateAddress } from '@qbitcoin/crypto'
+import { masterKeyFromSeed, mnemonicToSeed } from '@qbtc/crypto'
+import { decodeAddress, validateAddress } from '../../src/main/brand/crypto'
 import { describe, expect, it } from 'vitest'
 import { deriveClassicalAddress } from '../../src/main/wallet/addresses'
 

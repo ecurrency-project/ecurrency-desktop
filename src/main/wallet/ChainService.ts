@@ -1,5 +1,5 @@
-import { balanceOf, type ChainTx, type FeeEstimates, type TokenInfo } from '@qbitcoin/chain'
-import { btcAddressFromScriptPubKey, fromHex, type BtcNetwork } from '@qbitcoin/crypto'
+import { balanceOf, type ChainTx, type FeeEstimates, type TokenInfo } from '@qbtc/chain'
+import { btcAddressFromScriptPubKey, fromHex, type BtcNetwork } from '@qbtc/crypto'
 import {
   discoverBranch,
   isActive,

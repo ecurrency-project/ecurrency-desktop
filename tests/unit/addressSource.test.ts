@@ -1,4 +1,5 @@
-import { activeScheme, addressFromScripthash, DERIVATION_SCHEMES, exportAccountXpub, masterKeyFromSeed, type DerivationScheme } from '@qbitcoin/crypto'
+import { masterKeyFromSeed, type DerivationScheme } from '@qbtc/crypto'
+import { activeScheme, addressFromScripthash, DERIVATION_SCHEMES, exportAccountXpub } from '../../src/main/brand/crypto'
 import { describe, expect, it } from 'vitest'
 import { createAddressListSource, createDescriptorAddressSource, createSeedAddressSource } from '../../src/main/wallet/AddressSource'
 import type { WalletMeta } from '../../src/main/wallet/meta'

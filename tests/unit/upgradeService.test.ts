@@ -1,5 +1,5 @@
-import { decodeBtcAddress, masterKeyFromSeed, mnemonicToSeed, toHex, type HDKey } from '@qbitcoin/crypto'
-import type { BtcHistoryTx, BtcUtxo } from '@qbitcoin/chain'
+import { decodeBtcAddress, masterKeyFromSeed, mnemonicToSeed, toHex, type HDKey } from '@qbtc/crypto'
+import type { BtcHistoryTx, BtcUtxo } from '@qbtc/chain'
 import { describe, expect, it } from 'vitest'
 import { btcStagingPath, deriveBtcStagingAddress } from '../../src/main/wallet/btcStaging'
 import { UpgradeService, type UpgradeParams } from '../../src/main/wallet/UpgradeService'
