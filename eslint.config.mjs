@@ -4,8 +4,7 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  // packages/ holds the vault (its own toolchain); @qbtc/* are linted upstream.
-  { ignores: ['out/**', 'dist/**', 'release/**', 'packages/**', 'node_modules/**'] },
+  { ignores: ['out/**', 'dist/**', 'release/**', 'node_modules/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
