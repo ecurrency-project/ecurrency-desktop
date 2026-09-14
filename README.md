@@ -26,9 +26,9 @@ The decrypted seed lives only in the Electron **main** process; the **renderer**
 
 ## Get the code
 
-The crypto and chain layers come from npm as `@qbtc/crypto` and `@qbtc/chain`
-(exact pins); the vault package is vendored under `packages/vault`. There is no
-submodule to set up. Just clone:
+The crypto, chain and vault layers come from npm as `@qbtc/crypto`,
+`@qbtc/chain` and `@qbtc/vault` (exact pins). There is no submodule or
+workspace to set up. Just clone:
 
 ```bash
 git clone <repo-url>
@@ -39,7 +39,7 @@ cd <repo>
 
 ```bash
 corepack enable      # makes the pinned pnpm available
-pnpm install         # installs @qbtc/* and links packages/vault into the workspace
+pnpm install         # installs the @qbtc/* packages and everything else
 ```
 
 ## Develop
@@ -111,8 +111,8 @@ If you only need to run/test (not produce an installer), `pnpm build` then
 ## Continuous integration
 
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs typecheck, lint, and
-unit tests on every push and pull request. The shared packages are vendored
-in-repo, so no submodule fetch or extra credentials are needed. Per-platform
+unit tests on every push and pull request. The shared packages come from the
+public npm registry, so no submodule fetch or extra credentials are needed. Per-platform
 release builds (a macOS + Windows matrix) are added with the signing step.
 
 ## Project layout
@@ -129,7 +129,6 @@ src/
   shared/      the typed IPC protocol shared by main + preload
 tests/unit/    vitest (pure logic)
 tests/e2e/     Playwright (drives the built Electron app)
-packages/      the vendored vault package (crypto and chain come from npm as @qbtc/*)
 resources/     build resources (installer icons)
 ```
 

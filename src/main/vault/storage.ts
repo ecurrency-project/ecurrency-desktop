@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import { dirname } from 'node:path'
-import type { VaultStorage } from '@qbitcoin/vault'
+import type { VaultStorage } from '@qbtc/vault'
 
 // File-backed persistence for the encrypted vault blob. The blob handed to
 // write() is already ciphertext (the Vault seals it with Argon2id + AES-GCM);
