@@ -1,7 +1,8 @@
 /* Design tokens + base styles. Components style themselves inline using these
    variables (mirroring the design source); this file owns the token values and
    the global reset. Dark is the default; a light theme is provided for later via
-   [data-theme="light"]. Fonts are the system stack (no remote font fetch).
+   [data-theme="light"]. Fonts: the system stack on macOS; Windows and Linux
+   fall through to the bundled Inter / JetBrains Mono. No remote font fetch.
 
    The accent ramp (--primary*, --on-primary) lives in ../brand/theme.css: it is
    the one part of the palette each brand owns. */
@@ -32,8 +33,8 @@
   --watch-soft: #2a2926;
   --ring: #7aa2ff;
   --shadow: 0 30px 70px -18px rgba(0, 0, 0, 0.65), 0 10px 28px -10px rgba(0, 0, 0, 0.5);
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --display-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "JetBrains Mono Variable", Consolas, monospace;
+  --display-font: -apple-system, BlinkMacSystemFont, "Inter Variable", system-ui, sans-serif;
 }
 
 [data-theme="light"] {
