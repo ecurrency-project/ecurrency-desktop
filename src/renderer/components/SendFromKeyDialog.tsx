@@ -244,7 +244,8 @@ function SendFromKeyForm({ onClose }: { onClose: () => void }) {
                       aria-label={`Amount in ${asset}`}
                     />
                   </div>
-                  <Button variant={sendMax ? 'primary' : 'secondary'} style={{ height: 38 }} disabled={busy} onClick={() => setSendMax((m) => !m)}>
+                  {/* Same height as .field (46px) so the row lines up. */}
+                  <Button variant={sendMax ? 'primary' : 'secondary'} style={{ height: 46 }} disabled={busy} onClick={() => setSendMax((m) => !m)}>
                     {sendMax ? 'Max ✓' : 'Max'}
                   </Button>
                 </div>
