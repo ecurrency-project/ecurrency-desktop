@@ -39,7 +39,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const { busy } = operation
   const generating = useRef(false)
   const validation = useRef(0)
-  const access = useSensitiveSession(step === 'confirm' ? 'confirmation' : step === 'import' ? 'seed-input' : 'onboarding', ['seed', 'confirm', 'import'].includes(step), () => {
+  // The confirm step shows no secret — the user types three words from their own
+  // backup — so it runs without a sensitive session: no timer, no capture shield.
+  const access = useSensitiveSession(step === 'import' ? 'seed-input' : 'onboarding', step === 'seed' || step === 'import', () => {
     setRevealed(false); setAck(false); generating.current = false
     validation.current++
   })
@@ -230,30 +232,28 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           <div style={{ maxWidth: 420, margin: '0 auto' }}>
             <Title>Confirm your phrase</Title>
             <Subtitle>Just to be sure you saved it — enter these three words from your phrase.</Subtitle>
-            <SensitiveContent access={access} action="Check backup" layout="screen">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 22 }}>
-                {confirmIdx.map((wi, i) => {
-                  const val = confirmVals[i] ?? ''
-                  const matched = val.trim().toLowerCase() === words[wi]
-                  return (
-                    <TextField
-                      {...secretInputProps}
-                      key={wi}
-                      mono
-                      label={`Word #${wi + 1}`}
-                      value={val}
-                      onChange={(e) => setConfirmVals((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
-                      placeholder="Type the word"
-                      aria-label={`Word ${wi + 1}`}
-                      state={val.length === 0 ? 'default' : matched ? 'success' : 'error'}
-                    />
-                  )
-                })}
-              </div>
-              <Button fullWidth size="cta" disabled={!confirmOk || busy} onClick={() => void seal(mnemonic)} style={{ marginTop: 20 }}>
-                {busy ? 'Creating…' : 'Confirm'}
-              </Button>
-            </SensitiveContent>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 22 }}>
+              {confirmIdx.map((wi, i) => {
+                const val = confirmVals[i] ?? ''
+                const matched = val.trim().toLowerCase() === words[wi]
+                return (
+                  <TextField
+                    {...secretInputProps}
+                    key={wi}
+                    mono
+                    label={`Word #${wi + 1}`}
+                    value={val}
+                    onChange={(e) => setConfirmVals((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
+                    placeholder="Type the word"
+                    aria-label={`Word ${wi + 1}`}
+                    state={val.length === 0 ? 'default' : matched ? 'success' : 'error'}
+                  />
+                )
+              })}
+            </div>
+            <Button fullWidth size="cta" disabled={!confirmOk || busy} onClick={() => void seal(mnemonic)} style={{ marginTop: 20 }}>
+              {busy ? 'Creating…' : 'Confirm'}
+            </Button>
             {busy && <p role="status">Creating wallet…</p>}
             {error && <p role="alert" className="field-hint field-hint--error">{error}</p>}
           </div>

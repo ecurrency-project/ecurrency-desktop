@@ -70,14 +70,14 @@ describe('main sensitive permission', () => {
     const session = manager.begin(1, 'reveal', true)
     vi.advanceTimersByTime(SENSITIVE_SESSION_MS)
     expect(notify).toHaveBeenCalledWith({ sessionId: session.sessionId, reason: 'expired' })
-    const next = manager.begin(1, 'confirmation', true)
+    const next = manager.begin(1, 'seed-input', true)
     manager.navigate(1)
     expect(manager.generation(1)).toBe(1)
-    expect(() => manager.assert(1, next.sessionId, 'confirmation')).toThrow()
+    expect(() => manager.assert(1, next.sessionId, 'seed-input')).toThrow()
   })
   it('validates privacy IPC values instead of trusting the types', () => {
     const { manager } = fixture()
-    for (const value of [null, {}, { type: 'begin', purpose: 'admin', acknowledged: true }, { type: 'begin', purpose: 'reveal', acknowledged: 'yes' }, { type: 'end', sessionId: 1 }]) {
+    for (const value of [null, {}, { type: 'begin', purpose: 'admin', acknowledged: true }, { type: 'begin', purpose: 'confirmation', acknowledged: true }, { type: 'begin', purpose: 'reveal', acknowledged: 'yes' }, { type: 'end', sessionId: 1 }]) {
       expect(handlePrivacy(manager, 1, value).ok).toBe(false)
     }
     expect(handlePrivacy(manager, 1, { type: 'status' })).toEqual({ ok: true, value: 'best-effort' })

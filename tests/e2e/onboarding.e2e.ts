@@ -1,4 +1,4 @@
-import { acceptPrivacy, focusedWindow, freshUserData } from './privacyHelpers'
+import { acceptPrivacy, captureProtected, focusedWindow, freshUserData } from './privacyHelpers'
 import { join } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 
@@ -39,16 +39,25 @@ test('create a wallet, confirm the phrase, then lock and unlock', async () => {
 
     await page.getByRole('switch', { name: "I've saved these words somewhere safe" }).click()
     await page.getByRole('button', { name: "I've written it down" }).click()
-    await acceptPrivacy(page)
+
+    // The quiz shows no secret: no gate, no countdown, and the window stays capturable.
+    await expect(page.getByRole('heading', { name: 'Confirm your phrase' })).toBeVisible()
+    await expect(page.getByTestId('privacy-continue')).toHaveCount(0)
+    await expect(page.getByRole('timer')).toHaveCount(0)
+    await expect.poll(() => captureProtected(app)).not.toBe(true)
 
     // Fill each quizzed word using the index encoded in its aria-label ("Word N").
     const fields = page.locator('input[aria-label^="Word "]')
+    await expect(fields).toHaveCount(3)
     for (let i = 0; i < (await fields.count()); i++) {
       const field = fields.nth(i)
       const aria = (await field.getAttribute('aria-label')) ?? ''
       const n = Number(aria.replace('Word ', ''))
       await field.fill(words[n - 1])
     }
+    // Leaving the window to look at the written backup keeps the typed words.
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+    await expect(fields).toHaveCount(3)
     await page.getByRole('button', { name: 'Confirm' }).click()
 
     await expect(page.getByRole('heading', { name: "You're all set" })).toBeVisible()
