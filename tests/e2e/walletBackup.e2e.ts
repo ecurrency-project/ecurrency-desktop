@@ -167,3 +167,23 @@ test('watch address lists export fully and never offer a secret', async () => {
     expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(addresses.join('\n'))
   } finally { scalar.fill(0); await app.close() }
 })
+
+test('a tall dialog stays inside the minimum-size window and scrolls its body', async () => {
+  const { app, page } = await launch()
+  const scalar = new Uint8Array(32).fill(3)
+  try {
+    await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.setSize(960, 640) })
+    await expect.poll(() => page.evaluate(() => window.innerHeight)).toBeLessThanOrEqual(640)
+    await page.getByRole('button', { name: 'Add wallet', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('tab', { name: 'Private key', exact: true }).click()
+    await acceptPrivacy(dialog)
+    await dialog.getByLabel('Private key', { exact: true }).fill(encodeWif(scalar, 'mainnet'))
+    await expect(dialog.locator('code')).toHaveText(addressFromPubkey(getPublicKey(scalar), 'ecdsa', 'mainnet'))
+    // The title and actions stay reachable; only the body scrolls.
+    await expect(dialog.locator('.modal-title')).toBeInViewport({ ratio: 1 })
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeInViewport({ ratio: 1 })
+    await expect(dialog.getByRole('button', { name: 'Add wallet', exact: true })).toBeInViewport({ ratio: 1 })
+    expect(await dialog.locator('.modal-body').evaluate((body) => body.scrollHeight > body.clientHeight && getComputedStyle(body).overflowY === 'auto')).toBe(true)
+  } finally { scalar.fill(0); await app.close() }
+})
