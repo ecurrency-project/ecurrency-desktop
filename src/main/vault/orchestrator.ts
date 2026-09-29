@@ -31,6 +31,8 @@ import {
   type VaultRequest,
   type VaultStatus,
   type WalletInfo,
+  type WalletBackup,
+  type WalletPublicData,
   type WalletResponse,
   type WalletSummary,
   type WatchInput,
@@ -45,7 +47,6 @@ export interface VaultLike {
   unlock(password: string): void | Promise<void>
   lock(): void
   destroy(): void | Promise<void>
-  revealMnemonic(password: string): string | Promise<string>
   changePassword(oldPassword: string, newPassword: string): void | Promise<void>
   noteActivity(): void
 }
@@ -115,7 +116,8 @@ export interface WalletOps {
   switch(id: string): readonly WalletInfo[] | Promise<readonly WalletInfo[]>
   rename(id: string, label: string): readonly WalletInfo[] | Promise<readonly WalletInfo[]>
   remove(id: string): Promise<readonly WalletInfo[]>
-  exportDescriptor(): Promise<string>
+  revealBackup(walletId: string, password: string, check: () => void): Promise<WalletBackup>
+  exportPublicData(walletId: string): Promise<WalletPublicData>
 }
 
 // Ephemeral "send from a private key" (sweep), implemented in main. The key is
@@ -190,7 +192,7 @@ export interface OrchestratorDeps {
 export class VaultOrchestrator {
   constructor(private readonly deps: OrchestratorDeps) {}
 
-  async handle(request: VaultRequest): Promise<WalletResponse<unknown>> {
+  async handle(request: VaultRequest, checkSensitive?: () => void): Promise<WalletResponse<unknown>> {
     try {
       switch (request.type) {
         case 'vault.getStatus':
@@ -207,9 +209,10 @@ export class VaultOrchestrator {
         case 'vault.destroy':
           await this.deps.vault.destroy()
           return ok(await this.deps.vault.getStatus())
-        case 'vault.revealMnemonic':
-          // The only path that returns the phrase — the Vault re-checks the password.
-          return ok(await this.deps.vault.revealMnemonic(request.password))
+        case 'wallets.revealBackup':
+          if (!checkSensitive) throw new Error('Backup permission is required.')
+          checkSensitive()
+          return ok(await this.deps.wallets.revealBackup(request.walletId, request.password, checkSensitive))
         case 'vault.changePassword':
           await this.deps.vault.changePassword(request.oldPassword, request.newPassword)
           return ok(undefined)
@@ -296,8 +299,8 @@ export class VaultOrchestrator {
           return ok(await this.deps.wallets.rename(request.id, request.label))
         case 'wallets.remove':
           return ok(await this.deps.wallets.remove(request.id))
-        case 'wallets.exportDescriptor':
-          return ok(await this.deps.wallets.exportDescriptor())
+        case 'wallets.exportPublicData':
+          return ok(await this.deps.wallets.exportPublicData(request.walletId))
         case 'node.get':
           return ok(await this.deps.node.get())
         case 'node.select':

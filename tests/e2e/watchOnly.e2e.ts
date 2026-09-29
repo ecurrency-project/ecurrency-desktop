@@ -1,4 +1,4 @@
-import { acceptPrivacy, freshUserData } from './privacyHelpers'
+import { acceptPrivacy, focusedWindow, freshUserData } from './privacyHelpers'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 
@@ -14,7 +14,7 @@ const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon 
 test('export a descriptor, add it as a watch wallet, see it blocked, then remove it', async () => {
   const userData = freshUserData()
   const app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
-  const page = await app.firstWindow()
+  const page = await focusedWindow(app)
   try {
     // Onboard quickly by importing a known phrase.
     await page.getByRole('button', { name: 'I already have a wallet' }).click()
@@ -52,6 +52,10 @@ test('export a descriptor, add it as a watch wallet, see it blocked, then remove
 
     // Remove it from Accounts; the watch wallet (and the badge) disappear.
     await page.getByRole('button', { name: 'Settings' }).click()
+    await expect(page.getByRole('button', { name: 'Reveal', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: 'Watch descriptor', exact: true })).toHaveValue(descriptor)
+    await page.getByRole('dialog').locator('.modal-close').click()
     await page.getByRole('button', { name: 'Remove wallet' }).click()
     await page.getByRole('button', { name: 'Remove', exact: true }).click()
     await expect(page.getByText('Cold vault')).toHaveCount(0)

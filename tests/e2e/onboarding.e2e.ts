@@ -1,4 +1,4 @@
-import { acceptPrivacy, freshUserData } from './privacyHelpers'
+import { acceptPrivacy, focusedWindow, freshUserData } from './privacyHelpers'
 import { join } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 
@@ -13,7 +13,7 @@ const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon 
 async function launchFresh(): Promise<{ app: ElectronApplication; page: Page }> {
   const userData = freshUserData()
   const app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
-  const page = await app.firstWindow()
+  const page = await focusedWindow(app)
   return { app, page }
 }
 

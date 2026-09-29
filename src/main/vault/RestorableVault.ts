@@ -11,6 +11,8 @@ export interface RestoreStorage extends VaultStorage {
 // All writes share this queue so a password change/destroy cannot race restore.
 export class RestorableVault extends Vault {
   private epoch = 0
+  private backupRevision = 0
+  private pendingMutations = 0
   private mutations: Promise<unknown> = Promise.resolve()
 
   constructor(private readonly persistence: RestoreStorage, private readonly config: VaultConfig) {
@@ -19,16 +21,33 @@ export class RestorableVault extends Vault {
 
   override lock(reason: LockReason = 'manual'): void {
     this.epoch++
+    this.backupRevision++
     super.lock(reason)
   }
 
+  // Covers the gaps between password verification and reading an imported secret.
+  // A lock/unlock or any pending credential write invalidates the whole read.
+  captureBackupContext(): () => void {
+    const revision = this.backupRevision
+    const check = (): void => {
+      if (!this.isUnlocked() || this.pendingMutations !== 0 || revision !== this.backupRevision) throw new WalletLockedError()
+    }
+    check()
+    return check
+  }
+
   private mutate(operation: (check: () => void) => Promise<void>): Promise<void> {
+    this.backupRevision++
+    this.pendingMutations++
     const epoch = this.epoch
     const check = (): void => { if (epoch !== this.epoch) throw new WalletLockedError() }
     const result = this.mutations.then(async () => {
       check()
       await operation(check)
       check()
+    }).finally(() => {
+      this.pendingMutations--
+      this.backupRevision++
     })
     this.mutations = result.catch(() => {})
     return result

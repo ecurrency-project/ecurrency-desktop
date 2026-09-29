@@ -1,7 +1,7 @@
-// Typed IPC contract between the renderer (key-free UI) and the main process
+// Typed IPC contract between the renderer (UI) and the main process
 // (which owns the Vault). Security boundary: the master seed and BIP-32 key
-// NEVER cross it — only requests, public statuses, and the outputs of keys
-// (signatures, addresses).
+// never cross it. Explicit re-authenticated backup requests can return mnemonic,
+// passphrase or WIF; other replies contain only public data and signing results.
 export const WALLET_CHANNEL = 'wallet:request' as const
 
 // main → renderer status broadcasts (e.g. when autolock fires).
@@ -30,10 +30,9 @@ export interface UpdaterApi {
 export type WalletRequest = { readonly type: 'ping' }
 
 // --- Vault control ---
-// Only the status string crosses the bridge for these. The master seed / BIP-32
-// key never cross; the mnemonic crosses solely on an explicit, password-
-// re-authenticated reveal (vault.revealMnemonic), and `password` crosses once
-// inward on create/unlock/reveal — never retained by the renderer.
+// Raw master seeds and BIP-32 keys never cross this boundary. Recovery material
+// crosses only for explicit input, protected generation or re-authenticated
+// backup. Password input is transient and cleared after authentication.
 export type VaultStatus = 'empty' | 'locked' | 'unlocked'
 
 export type VaultRequest =
@@ -42,7 +41,7 @@ export type VaultRequest =
   | { readonly type: 'vault.unlock'; readonly password: string }
   | { readonly type: 'vault.lock' }
   | { readonly type: 'vault.destroy' }
-  | { readonly type: 'vault.revealMnemonic'; readonly password: string; readonly sessionId: string }
+  | { readonly type: 'wallets.revealBackup'; readonly walletId: string; readonly password: string; readonly sessionId: string }
   | { readonly type: 'vault.changePassword'; readonly oldPassword: string; readonly newPassword: string }
   | { readonly type: 'vault.noteActivity' }
   | { readonly type: 'vault.generateMnemonic'; readonly sessionId: string }
@@ -81,7 +80,7 @@ export type VaultRequest =
   | { readonly type: 'wallets.switch'; readonly id: string }
   | { readonly type: 'wallets.rename'; readonly id: string; readonly label: string }
   | { readonly type: 'wallets.remove'; readonly id: string }
-  | { readonly type: 'wallets.exportDescriptor' }
+  | { readonly type: 'wallets.exportPublicData'; readonly walletId: string }
   | { readonly type: 'node.get' }
   | { readonly type: 'node.select'; readonly kind: NodeKind; readonly url?: string }
   | { readonly type: 'node.setOwn'; readonly url: string; readonly user?: string; readonly password?: string }
@@ -495,6 +494,18 @@ export interface PingResult {
   readonly version: string
 }
 
+// Only returned to an explicitly authorized backup dialog; never cached in WalletInfo.
+export type WalletBackup =
+  | { readonly walletId: string; readonly kind: 'seed'; readonly mnemonic: string; readonly passphrase?: string }
+  | { readonly walletId: string; readonly kind: 'key'; readonly wif: string; readonly algo: AddressAlgo; readonly address: string; readonly network: 'mainnet' | 'testnet' }
+
+export interface WalletPublicData {
+  readonly walletId: string
+  readonly kind: 'descriptor' | 'addresses'
+  readonly text: string
+  readonly network: 'mainnet' | 'testnet'
+}
+
 export interface SerializedError {
   readonly name: string
   readonly message: string
@@ -513,7 +524,7 @@ export interface WalletApi {
   unlock(password: string): Promise<VaultStatus>
   lock(): Promise<VaultStatus>
   destroy(): Promise<VaultStatus>
-  revealMnemonic(password: string, sessionId: string): Promise<string>
+  revealBackup(walletId: string, password: string, sessionId: string): Promise<WalletBackup>
   /** Change the unlock password (re-auth with the current one). */
   changePassword(oldPassword: string, newPassword: string): Promise<void>
   /** Signal real user activity (UI input) so main resets the idle-autolock timer. Fire-and-forget. */
@@ -597,8 +608,8 @@ export interface WalletApi {
   renameWallet(id: string, label: string): Promise<readonly WalletInfo[]>
   /** Remove a watch wallet and its data; returns the updated list. */
   removeWallet(id: string): Promise<readonly WalletInfo[]>
-  /** Export the active seed wallet's watch descriptor (xpub + Falcon list). Requires unlocked. */
-  exportWatchDescriptor(): Promise<string>
+  /** Export public recovery data for the selected seed/watch wallet. Requires unlocked. */
+  exportPublicData(walletId: string): Promise<WalletPublicData>
   /** Current node-selection settings (slots + Tor flag). */
   getNode(): Promise<NodeSettings>
   /** Activate a node slot; rebuilds the session. `url` picks which node leads

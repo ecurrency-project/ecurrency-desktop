@@ -99,7 +99,12 @@ const WALLETS: WalletOps = {
   switch: async () => [],
   rename: async () => [],
   remove: async () => [],
-  exportDescriptor: async () => 'watch-descriptor',
+  revealBackup: async (walletId, password, check) => {
+    check()
+    if (password !== 'pw') throw new Error('bad password')
+    return { walletId, kind: 'seed', mnemonic: MNEMONIC }
+  },
+  exportPublicData: async (walletId) => ({ walletId, kind: 'descriptor', text: 'watch-descriptor', network: 'mainnet' }),
 }
 
 const SWEEP: SweepOps = {
@@ -276,8 +281,9 @@ describe('VaultOrchestrator', () => {
   it('reveals the mnemonic only with the right password', async () => {
     const { orch } = make()
     await orch.handle({ type: 'vault.create', mnemonic: MNEMONIC, password: 'pw' })
-    expect(await orch.handle({ type: 'vault.revealMnemonic', sessionId: 'test-session', password: 'pw' })).toEqual({ ok: true, value: MNEMONIC })
-    expect((await orch.handle({ type: 'vault.revealMnemonic', sessionId: 'test-session', password: 'x' })).ok).toBe(false)
+    expect(await orch.handle({ type: 'wallets.revealBackup', walletId: 'default', sessionId: 'test-session', password: 'pw' }, () => {})).toEqual({ ok: true, value: { walletId: 'default', kind: 'seed', mnemonic: MNEMONIC } })
+    expect((await orch.handle({ type: 'wallets.revealBackup', walletId: 'default', sessionId: 'test-session', password: 'x' }, () => {})).ok).toBe(false)
+    expect((await orch.handle({ type: 'wallets.revealBackup', walletId: 'default', sessionId: 's', password: 'pw' })).ok).toBe(false)
   })
 
   it('never returns seed material across the bridge', async () => {

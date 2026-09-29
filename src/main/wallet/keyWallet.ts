@@ -27,8 +27,8 @@ import { toCryptoTransaction, type SignedTx } from './signTx'
 // A key wallet has exactly ONE address, decided at import: no HD tree, no
 // fresh receive/change addresses. Change from its sends returns to the same
 // address (accepted trade-off: the pubkey is public on-chain after the first
-// spend). Everything here runs in main only; the private key never crosses
-// the IPC bridge.
+// spend). Raw signing keys stay in main; WIF backup is a separate, explicit
+// password-authenticated operation in WalletBackupService.
 
 /** An imported key, materialized for a session: raw key material + address. */
 export interface ImportedKey {
@@ -54,23 +54,28 @@ export async function importedKeyFromStored(stored: StoredKey, network: Network)
     throw new Error(`This key cannot be used as ${stored.algo}.`)
   }
 
-  let key: ImportedKey
-  if (stored.algo === 'falcon512') {
-    const kp = await falconKeypairFromWifPayload(payload)
-    payload.fill(0) // the keypair holds its own copies
-    key = { algo: stored.algo, privateKey: kp.privateKey, publicKey: kp.publicKey, address: addressFromPubkey(kp.publicKey, stored.algo, network) }
-  } else {
-    // For classical keys the payload IS the private key — hand it over (the
-    // session cache owns and wipes it).
-    const publicKey = stored.algo === 'schnorr' ? schnorrGetPublicKey(payload) : getPublicKey(payload)
-    key = { algo: stored.algo, privateKey: payload, publicKey, address: addressFromPubkey(publicKey, stored.algo, network) }
-  }
+  try {
+    let key: ImportedKey
+    if (stored.algo === 'falcon512') {
+      const kp = await falconKeypairFromWifPayload(payload)
+      payload.fill(0) // the keypair holds its own copies
+      key = { algo: stored.algo, privateKey: kp.privateKey, publicKey: kp.publicKey, address: addressFromPubkey(kp.publicKey, stored.algo, network) }
+    } else {
+      // For classical keys the payload IS the private key — hand it over (the
+      // session cache owns and wipes it).
+      const publicKey = stored.algo === 'schnorr' ? schnorrGetPublicKey(payload) : getPublicKey(payload)
+      key = { algo: stored.algo, privateKey: payload, publicKey, address: addressFromPubkey(publicKey, stored.algo, network) }
+    }
 
-  if (stored.address !== '' && key.address !== stored.address) {
-    key.privateKey.fill(0)
-    throw new Error('Stored key data is inconsistent (address mismatch) — refusing to use it.')
+    if (stored.address !== '' && key.address !== stored.address) {
+      key.privateKey.fill(0)
+      throw new Error('Stored key data is inconsistent (address mismatch) — refusing to use it.')
+    }
+    return key
+  } catch (error) {
+    payload.fill(0)
+    throw error
   }
-  return key
 }
 
 /** The discovery source of a key wallet: one fixed address on the key's branch. */
