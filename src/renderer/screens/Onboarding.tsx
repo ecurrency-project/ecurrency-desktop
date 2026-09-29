@@ -221,7 +221,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
               <RecoveryPhrase words={words} shown={revealed} />
               {!revealed && error && <Button fullWidth onClick={() => void showPhrase()} style={{ marginTop: 12 }}><EyeIcon size={16} />Try again</Button>}
               {error && <div role="alert" className="field-hint field-hint--error">{error}</div>}
-              <p style={{ fontSize: 12, color: 'var(--pq)' }}><AtomIcon size={15} /> These words protect both your classical and post-quantum addresses.</p>
+              <p style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--pq)' }}><AtomIcon size={15} /> These words protect both your classical and post-quantum addresses.</p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginTop: 18, padding: '13px 14px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--well)' }}>
                 <Switch checked={ack} onChange={setAck} label="I've saved these words somewhere safe" />
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--ink-900)' }}>I&apos;ve saved these words somewhere safe</span>

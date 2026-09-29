@@ -272,6 +272,8 @@ export function Convert() {
   })()
 
   const returnAddrLooksValid = useMemo(() => btcAddrLooksValid(returnAddr, buildNet), [returnAddr, buildNet])
+  const returnInvalid = returnLeft && returnAddr.trim() !== '' && !returnAddrLooksValid
+  const returnHintId = useId()
 
   return (
     <Screen center>
@@ -496,23 +498,28 @@ export function Convert() {
               Returned — txid <CopyValue text={returnResult} style={{ fontFamily: 'var(--mono)' }} />
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <TextField
-                  label={`Return all ${src} to`}
-                  mono
-                  value={returnAddr}
-                  onChange={(e) => setReturnAddr(e.target.value)}
-                  onBlur={() => setReturnLeft(true)}
-                  placeholder={`${src} address`}
-                  aria-label="Return address"
-                  state={returnLeft && returnAddr.trim() !== '' && !returnAddrLooksValid ? 'error' : 'default'}
-                  hint={returnLeft && returnAddr.trim() !== '' && !returnAddrLooksValid ? `That does not look like a ${buildNet ?? 'mainnet'} ${src} address.` : undefined}
-                />
+            <div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <TextField
+                    label={`Return all ${src} to`}
+                    mono
+                    value={returnAddr}
+                    onChange={(e) => setReturnAddr(e.target.value)}
+                    onBlur={() => setReturnLeft(true)}
+                    placeholder={`${src} address`}
+                    aria-label="Return address"
+                    aria-describedby={returnInvalid ? returnHintId : undefined}
+                    state={returnInvalid ? 'error' : 'default'}
+                  />
+                </div>
+                {/* Same height as .field (46px) so the row lines up. */}
+                <Button variant="secondary" style={{ height: 46 }} disabled={busy || !returnAddrLooksValid} onClick={() => void doReturn()}>
+                  Return
+                </Button>
               </div>
-              <Button variant="secondary" style={{ height: 38 }} disabled={busy || !returnAddrLooksValid} onClick={() => void doReturn()}>
-                Return
-              </Button>
+              {/* Under the row, so its appearance never moves the button off the field. */}
+              {returnInvalid && <div id={returnHintId} className="field-hint field-hint--error">That does not look like a {buildNet ?? 'mainnet'} {src} address.</div>}
             </div>
           )}
         </section>
