@@ -11,6 +11,11 @@ export async function focusedWindow(app: ElectronApplication): Promise<Page> {
   return page
 }
 
+// Capture protection state of the window; null where the OS has no such API.
+export async function captureProtected(app: ElectronApplication): Promise<boolean | null> {
+  return app.evaluate(({ BrowserWindow }) => process.platform === 'linux' ? null : BrowserWindow.getAllWindows()[0]!.isContentProtected())
+}
+
 export function freshUserData(): string {
   const root = join(process.cwd(), 'test-results')
   mkdirSync(root, { recursive: true })

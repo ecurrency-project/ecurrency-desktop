@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
-import { acceptPrivacy, focusApp, focusedWindow } from './privacyHelpers'
+import { acceptPrivacy, captureProtected, focusApp, focusedWindow } from './privacyHelpers'
 import { encodeWif } from '../../src/main/brand/crypto'
 import type { PrivacyApi } from '../../src/shared/privacy'
 
@@ -39,10 +39,6 @@ async function openReveal(page: Page) {
 async function revealPhrase(page: Page) {
   await focusApp(page)
   await page.getByRole('dialog').getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-}
-// Capture protection state of the window; null where the OS has no such API.
-async function captureProtected(app: ElectronApplication): Promise<boolean | null> {
-  return app.evaluate(({ BrowserWindow }) => process.platform === 'linux' ? null : BrowserWindow.getAllWindows()[0]!.isContentProtected())
 }
 async function hidden(page: Page) {
   expect(await page.evaluate(() => document.documentElement.outerHTML.includes('abandon'))).toBe(false)

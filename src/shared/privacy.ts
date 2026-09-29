@@ -3,7 +3,7 @@ export const PRIVACY_EVENT_CHANNEL = 'privacy:revoked'
 export const SENSITIVE_SESSION_MS = 120_000
 
 export type CaptureStatus = 'best-effort' | 'limited' | 'unsupported' | 'error'
-export type SensitivePurpose = 'reveal' | 'onboarding' | 'seed-input' | 'key-input' | 'confirmation'
+export type SensitivePurpose = 'reveal' | 'onboarding' | 'seed-input' | 'key-input'
 export type RevokeReason = 'ended' | 'replaced' | 'blur' | 'hidden' | 'expired' | 'navigation' | 'unresponsive' | 'destroyed' | 'locked' | 'context' | 'suspend'
 export interface SensitiveSession {
   readonly sessionId: string
@@ -27,7 +27,7 @@ export interface PrivacyApi {
   onRevoked(listener: (event: SessionRevoked) => void): () => void
 }
 export function isPurpose(value: unknown): value is SensitivePurpose {
-  return ['reveal', 'onboarding', 'seed-input', 'key-input', 'confirmation'].includes(value as string)
+  return ['reveal', 'onboarding', 'seed-input', 'key-input'].includes(value as string)
 }
 export class SensitiveSessionError extends Error {
   override name = 'SensitiveSessionError'
