@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import type { HistoryItem } from '../../shared/protocol'
 import { saveTxLabel } from '../lib/walletData'
-import { PencilIcon } from '../ui'
+import { LabelInput, PencilIcon } from '../ui'
 import { TxTypeBadge } from './TxTypeBadge'
 
 // The editable top line of an activity row: the user's transaction label when set,
@@ -24,18 +24,14 @@ export function TxLabelLine({ tx, sub }: { tx: HistoryItem; sub: ReactNode }) {
 
   if (editing) {
     return (
-      <input
-        autoFocus
+      <LabelInput
+        compact
         defaultValue={tx.label ?? ''}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          e.stopPropagation()
-          if (e.key === 'Enter') e.currentTarget.blur()
-        }}
-        onBlur={(e) => save(e.currentTarget.value)}
+        onKeyDown={(e) => e.stopPropagation()}
+        onCommit={save}
         placeholder="Add label"
         aria-label="Transaction label"
-        style={{ width: '100%', maxWidth: 280, height: 28, padding: '0 8px', borderRadius: 7, border: '1px solid var(--primary)', background: 'var(--well)', color: 'var(--ink-900)', fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
       />
     )
   }

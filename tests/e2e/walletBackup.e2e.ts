@@ -96,6 +96,8 @@ for (const algo of ['ecdsa', 'schnorr', 'falcon512'] as const) {
       await dialog.getByRole('tab', { name: 'Private key', exact: true }).click()
       await acceptPrivacy(dialog)
       await dialog.getByLabel('Private key', { exact: true }).fill(wif)
+      // The field grows with a long Falcon key instead of staying a three-line box.
+      if (algo === 'falcon512') expect(await dialog.getByLabel('Private key', { exact: true }).evaluate((field) => field.getBoundingClientRect().height)).toBeGreaterThan(200)
       if (algo === 'schnorr') await dialog.getByRole('tab', { name: 'Schnorr', exact: true }).click()
       await expect(dialog.locator('code')).toHaveText(address)
       await dialog.getByRole('button', { name: 'Add wallet', exact: true }).click()
@@ -161,6 +163,8 @@ test('watch address lists export fully and never offer a secret', async () => {
     await expect(page.getByRole('button', { name: 'Reveal', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Export', exact: true }).click()
     await expect(page.getByRole('textbox', { name: 'Watch addresses', exact: true })).toHaveValue(addresses.join('\n'))
+    // Read-only data does not look like an input to fill in.
+    expect(await page.getByRole('textbox', { name: 'Watch addresses', exact: true }).evaluate((field) => getComputedStyle(field).backgroundColor)).toBe('rgba(0, 0, 0, 0)')
     await focusApp(page)
     await page.getByRole('button', { name: 'Copy', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Copied', exact: true })).toBeVisible()

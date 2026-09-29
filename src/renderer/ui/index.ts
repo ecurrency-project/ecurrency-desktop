@@ -7,7 +7,7 @@ export { CopyValue } from './CopyValue'
 export { Pill, type PillTone } from './Pill'
 export { Segmented, type SegmentedOption } from './Segmented'
 export { Switch } from './Switch'
-export { Checkbox, PasswordField, TextArea, TextField, type FieldState } from './fields'
+export { Checkbox, LabelInput, PasswordField, TextArea, TextField, type FieldState } from './fields'
 export {
   ActivityIcon,
   AlertIcon,

@@ -1,5 +1,5 @@
 import { QRCodeSVG } from 'qrcode.react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import type { DowngradeEpisodeIpcView, DowngradePlanView, UpgradePlanView, UpgradeStatusView } from '../../shared/protocol'
 import { brand } from '../brand'
 import { formatToken } from '../lib/format'
@@ -58,6 +58,8 @@ export function Convert() {
   // Compose state.
   const [convertAll, setConvertAll] = useState(true)
   const [amount, setAmount] = useState('')
+  // Validation messages show once the user leaves a field, not on every keystroke.
+  const [amountLeft, setAmountLeft] = useState(false)
   const [dest, setDest] = useState('')
   const [stage, setStage] = useState<Stage>('form')
   const [plan, setPlan] = useState<UpgradePlanView | null>(null)
@@ -68,6 +70,7 @@ export function Convert() {
   // Return-BTC state.
   const [returnOpen, setReturnOpen] = useState(false)
   const [returnAddr, setReturnAddr] = useState('')
+  const [returnLeft, setReturnLeft] = useState(false)
   const [returnResult, setReturnResult] = useState<string | null>(null)
 
   // Downgrade (native → source chain) state. The direction toggle renders only
@@ -77,6 +80,7 @@ export function Convert() {
   const [downEpisodes, setDownEpisodes] = useState<readonly DowngradeEpisodeIpcView[]>([])
   const [downAmount, setDownAmount] = useState('')
   const [downAddr, setDownAddr] = useState('')
+  const [downAddrLeft, setDownAddrLeft] = useState(false)
   const [downStage, setDownStage] = useState<Stage>('form')
   const [downPlan, setDownPlan] = useState<DowngradePlanView | null>(null)
   const [downTxid, setDownTxid] = useState('')
@@ -257,10 +261,12 @@ export function Convert() {
     }
   })()
 
+  const showBelowMin = belowMin && amountLeft
+  const amountHintId = useId()
   // One hint line UNDER the amount row, so its appearance never moves the row
   // itself: the minimum in manual mode, the fee note in All mode.
   const amountHint = ((): string | null => {
-    if (belowMin) return `Below the minimum of ${fromSat(minSat ?? '0')} ${src}.`
+    if (showBelowMin) return `Below the minimum of ${fromSat(minSat ?? '0')} ${src}.`
     if (convertAll) return hasFunds ? 'The network fee is subtracted from this amount at review.' : null
     return minSat !== null ? `Minimum ${fromSat(minSat)} ${src}` : null
   })()
@@ -343,9 +349,11 @@ export function Convert() {
                       value={convertAll ? (hasFunds ? fromSat(confirmedSat) : '') : amount}
                       disabled={convertAll}
                       onChange={(e) => setAmount(e.target.value)}
+                      onBlur={() => setAmountLeft(true)}
                       placeholder={convertAll ? 'Entire balance (minus network fee)' : '0.0'}
                       aria-label={`Amount in ${src}`}
-                      state={belowMin ? 'error' : 'default'}
+                      aria-describedby={amountHint !== null ? amountHintId : undefined}
+                      state={showBelowMin ? 'error' : 'default'}
                     />
                   </div>
                   {/* Same height as .field (46px) so the row lines up. */}
@@ -354,7 +362,7 @@ export function Convert() {
                   </Button>
                 </div>
                 {amountHint !== null && (
-                  <div className={belowMin ? 'field-hint field-hint--error' : 'field-hint'}>{amountHint}</div>
+                  <div id={amountHintId} className={showBelowMin ? 'field-hint field-hint--error' : 'field-hint'}>{amountHint}</div>
                 )}
               </div>
               <TextField
@@ -495,10 +503,11 @@ export function Convert() {
                   mono
                   value={returnAddr}
                   onChange={(e) => setReturnAddr(e.target.value)}
+                  onBlur={() => setReturnLeft(true)}
                   placeholder={`${src} address`}
                   aria-label="Return address"
-                  state={returnAddr.trim() !== '' && !returnAddrLooksValid ? 'error' : 'default'}
-                  hint={returnAddr.trim() !== '' && !returnAddrLooksValid ? `That does not look like a ${buildNet ?? 'mainnet'} ${src} address.` : undefined}
+                  state={returnLeft && returnAddr.trim() !== '' && !returnAddrLooksValid ? 'error' : 'default'}
+                  hint={returnLeft && returnAddr.trim() !== '' && !returnAddrLooksValid ? `That does not look like a ${buildNet ?? 'mainnet'} ${src} address.` : undefined}
                 />
               </div>
               <Button variant="secondary" style={{ height: 38 }} disabled={busy || !returnAddrLooksValid} onClick={() => void doReturn()}>
@@ -540,10 +549,11 @@ export function Convert() {
                     mono
                     value={downAddr}
                     onChange={(e) => setDownAddr(e.target.value)}
+                    onBlur={() => setDownAddrLeft(true)}
                     placeholder={`${src} address`}
                     aria-label="BTC destination address"
-                    state={downAddr.trim() !== '' && !downAddrLooksValid ? 'error' : 'default'}
-                    hint={downAddr.trim() !== '' && !downAddrLooksValid ? `That does not look like a ${buildNet ?? 'mainnet'} ${src} address.` : undefined}
+                    state={downAddrLeft && downAddr.trim() !== '' && !downAddrLooksValid ? 'error' : 'default'}
+                    hint={downAddrLeft && downAddr.trim() !== '' && !downAddrLooksValid ? `That does not look like a ${buildNet ?? 'mainnet'} ${src} address.` : undefined}
                   />
                   {downError !== null && <div className="field-hint field-hint--error">{downError}</div>}
                   <Button disabled={downBusy || downAmount.trim() === '' || !downAddrLooksValid} onClick={() => void downReview()}>

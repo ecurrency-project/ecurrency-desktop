@@ -6,7 +6,7 @@ import { useAdvancedMode } from '../lib/prefs'
 import { disassembleScript } from '../lib/script'
 import { assetLabelFor } from '../brand/labels'
 import { loadTxDetail, loadTxRaw, saveTxLabel, useAssetLabel, useBuildNetwork, useTokens } from '../lib/walletData'
-import { ChevDownIcon, CloseIcon, CopyIcon, CopyValue, ExternalIcon, PencilIcon } from '../ui'
+import { ChevDownIcon, CloseIcon, CopyIcon, CopyValue, ExternalIcon, LabelInput, PencilIcon } from '../ui'
 import { TxTypeBadge } from './TxTypeBadge'
 
 // Block explorer the "Explorer" button opens (brand-configured; hidden when the
@@ -126,19 +126,15 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-500)', marginBottom: 7 }}>Label</div>
             {editing ? (
-              <input
-                autoFocus
+              <LabelInput
                 defaultValue={tx.label ?? ''}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur()
-                }}
-                onBlur={(e) => {
+                onCommit={(value) => {
                   setEditing(false)
-                  saveTxLabel(tx.txid, e.currentTarget.value)
+                  saveTxLabel(tx.txid, value)
                 }}
                 placeholder="Add a label"
                 aria-label="Transaction label"
-                style={{ width: '100%', height: 40, padding: '0 12px', borderRadius: 10, border: '1px solid var(--primary)', background: 'var(--well)', color: 'var(--ink-900)', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
+                style={{ height: 40, padding: '0 12px' }}
               />
             ) : (
               <button

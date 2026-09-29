@@ -3,7 +3,7 @@ import type { UtxoView } from '../../shared/protocol'
 import { formatNative, formatToken, tokenLabels } from '../lib/format'
 import { wallet } from '../lib/wallet'
 import { invalidate, mutateCoins, useAssetLabel, useCoins, useTokens } from '../lib/walletData'
-import { Button, CheckIcon, PencilIcon, Pill, Screen, SearchIcon, SendIcon, SnowIcon } from '../ui'
+import { Button, CheckIcon, LabelInput, PencilIcon, Pill, Screen, SearchIcon, SendIcon, SnowIcon } from '../ui'
 
 type Filter = 'all' | 'spendable' | 'frozen' | 'tokens'
 const FILTERS: readonly (readonly [Filter, string])[] = [
@@ -129,7 +129,7 @@ export function Coins({ onSendSelected }: { onSendSelected: (outpoints: string[]
             })}
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--well)', minWidth: 200 }}>
+          <div className="field-wrap" style={{ height: 38, padding: '0 12px', minWidth: 200 }}>
             <span style={{ display: 'flex', color: 'var(--ink-500)' }}>
               <SearchIcon size={16} />
             </span>
@@ -138,7 +138,7 @@ export function Coins({ onSendSelected }: { onSendSelected: (outpoints: string[]
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search label or address"
               aria-label="Search coins"
-              style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: 'var(--ink-900)', fontSize: 13, outline: 'none' }}
+              style={{ fontSize: 13 }}
             />
           </div>
         </div>
@@ -261,19 +261,16 @@ function CoinRow({
 
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing ? (
-          <input
-            autoFocus
+          <LabelInput
+            compact
             defaultValue={coin.label ?? ''}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur()
-            }}
-            onBlur={(e) => {
-              onLabel(e.currentTarget.value)
+            onCommit={(value) => {
+              onLabel(value)
               setEditing(false)
             }}
             placeholder="Add label"
             aria-label="Coin label"
-            style={{ width: '100%', maxWidth: 280, height: 28, padding: '0 8px', borderRadius: 7, border: '1px solid var(--primary)', background: 'var(--card-el)', color: 'var(--ink-900)', fontSize: 13, outline: 'none' }}
+            style={{ background: 'var(--card-el)' }}
           />
         ) : (
           <>

@@ -4,7 +4,7 @@ import { formatNative, formatToken, parseNative, parseToken, tokenLabels } from 
 import { wallet } from '../lib/wallet'
 import { coinSelectionShort, isInsufficientFundsError } from '../lib/sendValidation'
 import { invalidate, setContacts as cacheSetContacts, useActiveWallet, useAddressPlaceholder, useAssetLabel, useCoins, useContacts, useTokens } from '../lib/walletData'
-import { Alert, AlertIcon, Button, CheckIcon, ChevDownIcon, ChevRightIcon, CoinsIcon, ContactDialog, ContactIcon, CopyIcon, EyeIcon, Pill, PlusIcon, Screen } from '../ui'
+import { Alert, AlertIcon, Button, CheckIcon, ChevDownIcon, ChevRightIcon, CoinsIcon, ContactDialog, ContactIcon, CopyIcon, EyeIcon, Pill, PlusIcon, Screen, TextField } from '../ui'
 
 // Send flow: form → review (built + held in main) → sending (sign + broadcast) →
 // done / failed. The renderer never builds or signs; it calls window.wallet and
@@ -304,8 +304,8 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                   From contacts
                 </button>
               </div>
-              <input
-                className="field field--mono"
+              <TextField
+                mono
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder={`Address or contact (${addressHint})`}
@@ -378,7 +378,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--ink-700)' }}>Amount</span>
                 {availableLabel !== null && <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>Available {availableLabel}</span>}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 56, padding: '0 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--well)' }}>
+              <div className="field-wrap" style={{ gap: 10, height: 56, padding: '0 14px' }}>
                 <input
                   value={amount}
                   onChange={(e) => {
@@ -388,7 +388,7 @@ export function Send({ onDone, preselected = [], token = null }: { onDone: () =>
                   inputMode="decimal"
                   placeholder="0.00"
                   aria-label={`Amount in ${assetSym}`}
-                  style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: 'var(--ink-900)', fontSize: 26, fontWeight: 600, fontFamily: 'var(--display-font)', fontVariantNumeric: 'tabular-nums', outline: 'none' }}
+                  style={{ fontSize: 26, fontWeight: 600, fontFamily: 'var(--display-font)', fontVariantNumeric: 'tabular-nums' }}
                 />
                 {/* Asset selector — only when there's a token to switch to; otherwise the native coin is fixed. */}
                 {tokens.length > 0 ? (
