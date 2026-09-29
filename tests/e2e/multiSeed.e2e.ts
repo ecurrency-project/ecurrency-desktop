@@ -1,4 +1,4 @@
-import { acceptPrivacy, freshUserData } from './privacyHelpers'
+import { acceptPrivacy, focusedWindow, freshUserData } from './privacyHelpers'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 
@@ -14,7 +14,7 @@ const SECOND = 'legal winner thank year wave sausage worth useful legal winner t
 test('import a second seed wallet, see it sign-capable, then remove it', async () => {
   const userData = freshUserData()
   const app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
-  const page = await app.firstWindow()
+  const page = await focusedWindow(app)
   try {
     // Onboard the primary wallet by importing a known phrase.
     await page.getByRole('button', { name: 'I already have a wallet' }).click()

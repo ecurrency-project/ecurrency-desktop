@@ -26,28 +26,30 @@ export function registerWalletIpc(orchestrator: VaultOrchestrator, opts: WalletI
         throw new Error('Malformed wallet request.')
       }
       const req = request as VaultRequest | { type: 'ping' }
+      if (req.type as string === 'vault.revealMnemonic' || req.type as string === 'wallets.exportDescriptor') throw new Error('Unsupported wallet request.')
       if (req.type === 'ping') return ok({ pong: true as const, version: app.getVersion() })
       const owner = event.sender.id
-      if (req.type === 'vault.revealMnemonic' || req.type === 'vault.generateMnemonic' || req.type === 'sweep.scan') {
-        if (typeof req.sessionId !== 'string' || !req.sessionId || (req.type === 'vault.revealMnemonic' && typeof req.password !== 'string') || (req.type === 'sweep.scan' && typeof req.wif !== 'string')) {
+      if (req.type === 'wallets.revealBackup' || req.type === 'vault.generateMnemonic' || req.type === 'sweep.scan') {
+        if (typeof req.sessionId !== 'string' || !req.sessionId || (req.type === 'wallets.revealBackup' && (typeof req.password !== 'string' || typeof req.walletId !== 'string' || !req.walletId)) || (req.type === 'sweep.scan' && typeof req.wif !== 'string')) {
           throw new Error('Malformed sensitive request.')
         }
-        const purpose = req.type === 'vault.revealMnemonic' ? 'reveal' : req.type === 'sweep.scan' ? 'key-input' : 'onboarding'
+        const purpose = req.type === 'wallets.revealBackup' ? 'reveal' : req.type === 'sweep.scan' ? 'key-input' : 'onboarding'
         sessions.assert(owner, req.sessionId, purpose)
         if (pending.has(req.sessionId)) throw new SensitiveSessionError()
         pendingId = req.sessionId
         pending.add(pendingId)
         const frame = event.senderFrame
         const generation = sessions.generation(owner)
+        const check = (): void => {
+          if (!trustedDocument(event, sessions, opts.isTrustedSender) || frame !== event.sender.mainFrame || generation !== sessions.generation(owner)) throw new SensitiveSessionError()
+          sessions.assert(owner, req.sessionId, purpose)
+        }
         if (purpose === 'reveal' && await opts.getVaultStatus() !== 'unlocked') throw new SensitiveSessionError()
-        sessions.assert(owner, req.sessionId, purpose)
-        const response = await orchestrator.handle(req)
+        check()
+        const response = await orchestrator.handle(req, check)
         // A successful KDF must not resurrect permission lost while it ran.
         try {
-          if (!trustedDocument(event, sessions, opts.isTrustedSender) || frame !== event.sender.mainFrame || generation !== sessions.generation(owner)) {
-            throw new SensitiveSessionError()
-          }
-          sessions.assert(owner, req.sessionId, purpose)
+          check()
         } catch (error) {
           if (req.type === 'sweep.scan') await orchestrator.handle({ type: 'sweep.cancel', sessionId: req.sessionId })
           throw error
@@ -55,7 +57,8 @@ export function registerWalletIpc(orchestrator: VaultOrchestrator, opts: WalletI
         return response
       }
       if (req.type === 'sweep.cancel' && (typeof req.sessionId !== 'string' || !req.sessionId)) throw new Error('Malformed sweep cancellation.')
-      if (['vault.lock', 'vault.destroy', 'vault.create', 'wallets.restore', 'wallets.switch', 'wallets.remove', 'network.set'].includes(req.type)) {
+      if (req.type === 'wallets.exportPublicData' && (typeof req.walletId !== 'string' || !req.walletId)) throw new Error('Malformed public export request.')
+      if (['vault.lock', 'vault.destroy', 'vault.create', 'vault.changePassword', 'wallets.restore', 'wallets.switch', 'wallets.remove', 'network.set'].includes(req.type)) {
         sessions.revokeAll('context')
       }
       return await orchestrator.handle(req)

@@ -18,7 +18,7 @@ function setup() {
   const frame = { url: 'file:///app/index.html' }
   const event = { sender: { id: 1, mainFrame: frame, isDestroyed: () => false }, senderFrame: frame } as unknown as IpcMainInvokeEvent
   manager.register(1, { available: () => true, captureStatus: () => 'best-effort', engageShield: () => true, shieldIntact: () => true, releaseShield: vi.fn(), notify: vi.fn() })
-  const handle = vi.fn(async () => ok('public-test-phrase'))
+  const handle = vi.fn<(request: unknown, check?: () => void) => Promise<WalletResponse<unknown>>>(async () => ok('public-test-phrase'))
   const status = vi.fn(async () => 'unlocked' as const)
   registerWalletIpc({ handle } as unknown as VaultOrchestrator, { sessions: manager, isTrustedSender: (url) => url === frame.url, getVaultStatus: status })
   const call = async (data: unknown, ev = event, channel: string = WALLET_CHANNEL): Promise<WalletResponse<unknown>> => await handlers.get(channel)!(ev, data) as WalletResponse<unknown>
@@ -43,22 +43,23 @@ describe('privacy and wallet IPC boundary', () => {
   })
   it('removes the old sessionless reveal and generation entry points', async () => {
     const { call, handle } = setup()
-    for (const data of [null, {}, { type: 'vault.revealMnemonic', password: 'pw' }, { type: 'vault.generateMnemonic' }, { type: 'sweep.scan', wif: 'x' }]) {
+    for (const data of [null, {}, { type: 'vault.revealMnemonic', password: 'pw', sessionId: 's' }, { type: 'wallets.revealBackup', walletId: 'default', password: 'pw' }, { type: 'vault.generateMnemonic' }, { type: 'sweep.scan', wif: 'x' }]) {
       expect((await call(data)).ok).toBe(false)
     }
     expect(handle).not.toHaveBeenCalled()
   })
   it('does not issue secret replies after blur/refocus, new document, deadline or context mutation', async () => {
-    for (const reason of ['blur', 'navigation', 'expired', 'switch'] as const) {
+    for (const reason of ['blur', 'navigation', 'expired', 'switch', 'password'] as const) {
       const { call, manager, handle } = setup()
       const session = manager.begin(1, 'reveal', true)
       const wait = deferred<ReturnType<typeof ok<string>>>()
       handle.mockReturnValueOnce(wait.promise)
-      const pending = call({ type: 'vault.revealMnemonic', password: 'pw', sessionId: session.sessionId })
+      const pending = call({ type: 'wallets.revealBackup', walletId: 'default', password: 'pw', sessionId: session.sessionId })
       await Promise.resolve()
       if (reason === 'navigation') manager.navigate(1)
       else if (reason === 'expired') vi.advanceTimersByTime(120_000)
       else if (reason === 'switch') await call({ type: 'wallets.switch', id: 'other' })
+      else if (reason === 'password') await call({ type: 'vault.changePassword', oldPassword: 'pw', newPassword: 'new-password' })
       else manager.revoke(1, 'blur')
       wait.resolve(ok('public-test-phrase'))
       const response = await pending
@@ -72,7 +73,7 @@ describe('privacy and wallet IPC boundary', () => {
     const session = manager.begin(1, 'reveal', true)
     const wait = deferred<'unlocked'>()
     status.mockReturnValueOnce(wait.promise)
-    const pending = call({ type: 'vault.revealMnemonic', password: 'pw', sessionId: session.sessionId })
+    const pending = call({ type: 'wallets.revealBackup', walletId: 'default', password: 'pw', sessionId: session.sessionId })
     manager.revoke(1, 'blur'); wait.resolve('unlocked')
     expect((await pending).ok).toBe(false)
     expect(handle).not.toHaveBeenCalled()
@@ -83,14 +84,16 @@ describe('privacy and wallet IPC boundary', () => {
     expect((await call({ type: 'vault.generateMnemonic', sessionId: draft.sessionId })).ok).toBe(true)
     const reveal = manager.begin(1, 'reveal', true)
     status.mockResolvedValueOnce('locked' as 'unlocked')
-    expect((await call({ type: 'vault.revealMnemonic', password: 'pw', sessionId: reveal.sessionId })).ok).toBe(false)
+    expect((await call({ type: 'wallets.revealBackup', walletId: 'default', password: 'pw', sessionId: reveal.sessionId })).ok).toBe(false)
     manager.remove(1)
   })
   it('rejects repeated in-flight reveals and malformed passwords', async () => {
     const { call, manager, handle } = setup()
     const session = manager.begin(1, 'reveal', true)
-    const req = { type: 'vault.revealMnemonic', password: 'pw', sessionId: session.sessionId }
+    const req = { type: 'wallets.revealBackup', walletId: 'default', password: 'pw', sessionId: session.sessionId }
     expect((await call({ ...req, password: 12 })).ok).toBe(false)
+    expect((await call({ ...req, walletId: 12 })).ok).toBe(false)
+    expect((await call({ ...req, walletId: '' })).ok).toBe(false)
     const wait = deferred<ReturnType<typeof ok<string>>>()
     handle.mockReturnValueOnce(wait.promise)
     const pending = call(req)
@@ -98,6 +101,33 @@ describe('privacy and wallet IPC boundary', () => {
     expect((await call(req)).ok).toBe(false)
     wait.resolve(ok('public-test-phrase'))
     expect((await pending).ok).toBe(true)
+    manager.remove(1)
+  })
+  it('passes a live permission check into the operation, invalidated before its next read', async () => {
+    const { call, manager, handle } = setup()
+    const session = manager.begin(1, 'reveal', true)
+    const entered = deferred<void>(), release = deferred<void>()
+    const readSecret = vi.fn()
+    handle.mockImplementationOnce(async (_req, check) => {
+      entered.resolve(); await release.promise
+      check!()
+      readSecret()
+      return ok('public-test-phrase')
+    })
+    const response = call({ type: 'wallets.revealBackup', walletId: 'default', password: 'pw', sessionId: session.sessionId })
+    await entered.promise
+    manager.revoke(1, 'blur'); release.resolve()
+    expect((await response).ok).toBe(false)
+    expect(readSecret).not.toHaveBeenCalled()
+    manager.remove(1)
+  })
+  it('refuses a session with the wrong purpose and malformed public exports', async () => {
+    const { call, manager, handle } = setup()
+    const session = manager.begin(1, 'key-input', true)
+    expect((await call({ type: 'wallets.revealBackup', walletId: 'default', password: 'pw', sessionId: session.sessionId })).ok).toBe(false)
+    expect((await call({ type: 'wallets.exportPublicData' })).ok).toBe(false)
+    expect((await call({ type: 'wallets.exportDescriptor' })).ok).toBe(false)
+    expect(handle).not.toHaveBeenCalled()
     manager.remove(1)
   })
 })

@@ -81,7 +81,7 @@ function AddWalletForm({ onClose }: { onClose: () => void }) {
       const before = wallets.map((w) => w.id)
       const list =
         mode === 'seed'
-          ? await wallet.addSeedWallet(label, text, passphrase.trim() === '' ? undefined : passphrase)
+          ? await wallet.addSeedWallet(label, text, passphrase === '' ? undefined : passphrase)
           : mode === 'key'
             ? await wallet.addKeyWallet(label, text, keyAlgo ?? undefined)
             : await wallet.addWatchWallet(label, toInput(kind, text))

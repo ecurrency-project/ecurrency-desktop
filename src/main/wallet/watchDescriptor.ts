@@ -133,7 +133,10 @@ export async function buildSeedWatchDescriptor(opts: {
   readonly label?: string
   readonly account?: number
   readonly lookahead?: { readonly receive: number; readonly change: number }
+  /** Cancel a backup export before/after each asynchronous key derivation. */
+  readonly check?: () => void
 }): Promise<WatchDescriptorV2> {
+  opts.check?.()
   const { master, meta, network, label, lookahead } = opts
   const account = opts.account ?? 0
   return buildWatchDescriptor({
@@ -145,7 +148,12 @@ export async function buildSeedWatchDescriptor(opts: {
       return {
         scheme: scheme.id,
         classicalXpub: exportAccountXpubFor(master, scheme, network, account),
-        deriveFalcon: (chain: 0 | 1, index: number) => deriveFalconAddress(master, { account, chain, index, network, scheme }),
+        deriveFalcon: async (chain: 0 | 1, index: number) => {
+          opts.check?.()
+          const address = await deriveFalconAddress(master, { account, chain, index, network, scheme })
+          opts.check?.()
+          return address
+        },
         pqFloors: { receive: floors.pqReceiveIndex, change: floors.pqChangeIndex },
       }
     }),

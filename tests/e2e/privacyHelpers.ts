@@ -1,6 +1,15 @@
-import { expect, type Locator, type Page } from '@playwright/test'
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
+
+const applications = new WeakMap<Page, ElectronApplication>()
+
+export async function focusedWindow(app: ElectronApplication): Promise<Page> {
+  const page = await app.firstWindow()
+  applications.set(page, app)
+  await focusApp(page)
+  return page
+}
 
 export function freshUserData(): string {
   const root = join(process.cwd(), 'test-results')
@@ -10,6 +19,21 @@ export function freshUserData(): string {
 
 export async function focusApp(scope: Page | Locator): Promise<void> {
   const page = 'page' in scope ? scope.page() : scope
+  const application = applications.get(page)
+  if (application) {
+    // On macOS the application can be hidden while document.hasFocus() remains
+    // true. Restore the native window before an explicit protected UI action.
+    await application.evaluate(({ app, BrowserWindow }) => {
+      if (process.platform === 'darwin') app.show()
+      app.focus({ steal: true })
+      const window = BrowserWindow.getAllWindows()[0]
+      window?.show(); window?.focus()
+    })
+    await expect.poll(() => application.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      return !!window && window.isVisible() && window.isFocused() && !window.isMinimized()
+    })).toBe(true)
+  }
   await page.evaluate(() => window.focus())
   await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(true)
 }

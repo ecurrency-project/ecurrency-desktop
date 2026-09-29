@@ -17,6 +17,7 @@ import { createSeedAddressSource, type AddressSource } from '../wallet/AddressSo
 import { KeyStore } from '../wallet/keyStore'
 import { createKeyAddressSource, importedKeyFromStored, inspectWifKey, keyReceiveOps, signUnsignedTxWithKey, type ImportedKey } from '../wallet/keyWallet'
 import { SeedStore } from '../wallet/seedStore'
+import { WalletBackupService } from '../wallet/WalletBackupService'
 import { createSweepSession } from '../wallet/sweep'
 import { SweepSlot } from '../wallet/SweepSlot'
 import { ChainService } from '../wallet/ChainService'
@@ -32,7 +33,7 @@ import { UpgradeService, type ConvertPlan, type ConvertRequest } from '../wallet
 import { DowngradeService, type ReclaimKeyCell } from '../wallet/DowngradeService'
 import { DowngradeMetaStore } from '../wallet/downgradeStore'
 import { UpgradeMetaStore } from '../wallet/upgradeStore'
-import { buildSeedWatchDescriptor, descriptorSchemes, encodeWatchDescriptor } from '../wallet/watchDescriptor'
+import { descriptorSchemes } from '../wallet/watchDescriptor'
 import { createWatchAddressSource, parseWatchInput, WatchSourceStore } from '../wallet/watchSource'
 import { dataRootFor, readNetworkProfile, writeNetworkProfile } from './networkProfile'
 import { basicAuthHeader, NodeAuthStore, type NodeAuth } from './nodeAuth'
@@ -93,6 +94,7 @@ export function createWalletCore(): WalletCore {
   // outlives active-wallet switches. (v1: one seed wallet; watch wallets reuse this
   // key for their sealed public data.)
   const vault = new RestorableVault(new FileVaultStorage(join(walletDir(userData, DEFAULT_WALLET_ID), 'vault.json')), { autoLockMs: AUTO_LOCK_MS, appDataInfo: PROFILE.appDataInfo })
+  const backup = new WalletBackupService(vault, registry, NETWORK, (id, file) => new FileVaultStorage(join(walletDir(userData, id), file)))
 
   // The public endpoints this build ships for its network (a brand value; may
   // be empty while a network is unlaunched).
@@ -473,6 +475,7 @@ export function createWalletCore(): WalletCore {
 
   // Drop the old session's caches, build the active one afresh, and warm it if unlocked.
   const rebuildActive = (): void => {
+    backup.invalidate()
     disposeSweep()
     active.reset()
     active = buildSession(registry.getActiveId())
@@ -632,25 +635,11 @@ export function createWalletCore(): WalletCore {
     if (entry === undefined) throw new Error(`Unknown wallet '${id}'`)
     if (id === DEFAULT_WALLET_ID) throw new Error('The primary wallet cannot be removed.')
     const wasActive = id === registry.getActiveId()
+    backup.invalidate()
     registry.remove(id)
     if (wasActive) rebuildActive()
     await rm(walletDir(userData, id), { recursive: true, force: true })
     return listWallets()
-  }
-
-  // Build the active seed wallet's watch descriptor (per scheme: account xpub + its
-  // Falcon address list; active scheme first, per the registry order) for sharing
-  // with a watch-only install. Requires the wallet unlocked; only a seed wallet has
-  // keys to derive from. Master and meta both belong to the ACTIVE wallet — an
-  // imported seed wallet exports ITS OWN descriptor, not the primary's.
-  const exportWatchDescriptor = async (): Promise<string> => {
-    const id = registry.getActiveId()
-    const entry = registry.get(id)
-    if (entry?.kind !== 'seed') throw new Error('Only a seed wallet can export a watch descriptor.')
-    const master = await openSeedMaster(id)
-    const meta = await new WalletMetaStore(new FileVaultStorage(join(walletDir(userData, id), 'walletmeta.json')), vault).load()
-    const descriptor = await buildSeedWatchDescriptor({ master, meta, network: NETWORK, label: entry.label })
-    return encodeWatchDescriptor(descriptor)
   }
 
   // ── Node selection (Network card) ────────────────────────────────────────────
@@ -892,7 +881,7 @@ export function createWalletCore(): WalletCore {
       setFrozen: (outpoint, frozen) => active.coins.setFrozen(outpoint, frozen),
     },
     contacts,
-    wallets: { list: listWallets, add: addWatchWallet, addSeed: addSeedWallet, inspectKey, addKey: addKeyWallet, restore: restoreFromMnemonic, switch: switchWallet, rename: renameWallet, remove: removeWallet, exportDescriptor: exportWatchDescriptor },
+    wallets: { list: listWallets, add: addWatchWallet, addSeed: addSeedWallet, inspectKey, addKey: addKeyWallet, restore: restoreFromMnemonic, switch: switchWallet, rename: renameWallet, remove: removeWallet, revealBackup: (id, password, check) => backup.reveal(id, password, check), exportPublicData: (id) => backup.exportPublic(id) },
     sweep: { scan: sweepScan, build: sweepBuild, confirm: sweepConfirm, cancel: (sessionId) => sweepSlot.dispose(sessionId) },
     node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, addCustom: addCustomNode, removeCustom: removeCustomNode, setTor, status: nodeStatus, setNetwork },
     upgrade: {

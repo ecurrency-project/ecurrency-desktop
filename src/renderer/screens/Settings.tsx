@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { Contact, NodeKind, NodeSettings, WalletInfo } from '../../shared/protocol'
+import type { Contact, NodeKind, NodeSettings, WalletBackup, WalletInfo, WalletPublicData } from '../../shared/protocol'
 import { PrivacyNote, SensitiveContent } from '../components/SensitiveContent'
 import { RecoveryPhrase } from '../components/RecoveryPhrase'
 import { useSensitiveSession } from '../lib/useSensitiveSession'
@@ -13,8 +13,8 @@ import { wallet } from '../lib/wallet'
 import { networkLabel, nodeDotColor, nodeSyncPercent, pollNode, probeNode, resetWalletData, setContacts as cacheSetContacts, setWallets, useActiveWallet, useAddressPlaceholder, useContacts, useNodeStatus, useWallets, type NodeStatusSnapshot } from '../lib/walletData'
 import { BoltIcon, Button, ContactDialog, EyeIcon, GlobeIcon, KeyIcon, Modal, OnionIcon, PasswordField, PasswordStrength, PencilIcon, Pill, PlusIcon, RetryIcon, Screen, Segmented, ServerIcon, ShieldIcon, Switch, TextArea, TextField, TrashIcon, WalletIcon } from '../ui'
 
-// Settings: network status, security (reveal recovery phrase behind a password
-// re-auth, change password — both in modals), and contacts. Every key operation
+// Settings: network status, device security, selected-wallet backup, and contacts.
+// Secret backups require fresh password authentication. Every key operation
 // runs in main; the renderer only collects input and shows results. Each section
 // is a single card with a header and divided rows, matching the design.
 export function Settings() {
@@ -24,7 +24,7 @@ export function Settings() {
         <AccountsCard />
         <NetworkCard />
         <SecurityCard />
-        <WatchCard />
+        <WalletBackupCard />
         <ContactsCard />
         <PreferencesCard />
       </div>
@@ -519,51 +519,63 @@ function PreferencesCard() {
 }
 
 function SecurityCard() {
-  const [revealOpen, setRevealOpen] = useState(false)
   const [changeOpen, setChangeOpen] = useState(false)
   return (
     <SectionCard title="Security">
-      <Row
-        title="Recovery phrase"
-        detail="Revealing requires your password. Never share it."
-        detailTone="warning"
-        action={
-          <Button variant="secondary" size="sm" onClick={() => setRevealOpen(true)}>
-            Reveal
-          </Button>
-        }
-      />
-      <Row
-        title="Change password"
-        detail="Update the password that unlocks this device."
-        action={
-          <Button variant="secondary" size="sm" onClick={() => setChangeOpen(true)}>
-            Change
-          </Button>
-        }
-      />
-      <RevealPhraseModal open={revealOpen} onClose={() => setRevealOpen(false)} />
+      <Row title="Change password" detail="Update the password that unlocks this device."
+        action={<Button variant="secondary" size="sm" onClick={() => setChangeOpen(true)}>Change</Button>} />
       <ChangePasswordModal open={changeOpen} onClose={() => setChangeOpen(false)} />
     </SectionCard>
   )
 }
 
-function RevealPhraseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  return open ? <RevealPhraseDialog onClose={onClose} /> : null
+function WalletBackupCard() {
+  const active = useActiveWallet()
+  // A different wallet mounts a fresh card and fresh dialogs, with no old state.
+  return active ? <BackupCard key={active.id} active={active} /> : null
 }
 
-function RevealPhraseDialog({ onClose }: { onClose: () => void }) {
+function BackupCard({ active }: { active: WalletInfo }) {
+  const [revealOpen, setRevealOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const isKey = active.kind === 'key'
+  return (
+    <SectionCard title="Wallet backup">
+      <Row title={active.label} detail={isKey ? 'Imported private key' : active.kind === 'watch' ? 'Watch-only wallet' : 'Recovery phrase wallet'} />
+      {active.kind !== 'watch' && <Row
+        title={isKey ? 'Private key' : 'Recovery phrase'}
+        detail={isKey ? "Back up this private key and its algorithm. Your main wallet’s recovery phrase does not restore this wallet."
+          : 'This phrase restores this wallet only. Imported wallets need their own backups.'}
+        detailTone="warning"
+        action={<Button variant="secondary" size="sm" onClick={() => setRevealOpen(true)}>Reveal</Button>} />}
+      {!isKey && <Row title={active.kind === 'watch' ? 'Export public data' : 'Export watch descriptor'}
+        detail={active.kind === 'watch' ? 'This wallet has no private keys. Public data restores watch-only access.'
+          : 'Public data lets you follow this wallet. It cannot restore spending access.'}
+        action={<Button variant="secondary" size="sm" onClick={() => setExportOpen(true)}>Export</Button>} />}
+      {revealOpen && active.kind !== 'watch' && <RevealBackupDialog active={active} onClose={() => setRevealOpen(false)} />}
+      {exportOpen && <ExportPublicDialog active={active} onClose={() => setExportOpen(false)} />}
+    </SectionCard>
+  )
+}
+
+function RevealBackupDialog({ active, onClose }: { active: WalletInfo; onClose: () => void }) {
   const [pw, setPw] = useState('')
-  const [words, setWords] = useState<readonly string[]>([])
+  const [backup, setBackup] = useState<WalletBackup | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
   const access = useSensitiveSession('reveal', true, () => {
-    setPw(''); setWords([]); setError(null); setBusy(false); pending.current = false
+    setPw(''); setBackup(null); setError(null); setBusy(false); pending.current = false
   })
+  const isKey = active.kind === 'key'
   const close = (): void => { access.controller.stop('closed'); onClose() }
-  // One click starts the protected session and checks the password. The words
-  // exist only while that session lasts; the next reveal needs the password again.
+  const closeRef = useRef(close)
+  closeRef.current = close
+  useEffect(() => {
+    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape') closeRef.current() }
+    window.addEventListener('keydown', escape)
+    return () => window.removeEventListener('keydown', escape)
+  }, [])
   async function reveal(): Promise<void> {
     if (pending.current || !pw) return
     pending.current = true
@@ -574,49 +586,63 @@ function RevealPhraseDialog({ onClose }: { onClose: () => void }) {
       if (!(await access.controller.begin('reveal'))) return
       ticket = access.controller.ticket()
       if (!ticket) return
-      const phrase = await wallet.revealMnemonic(pw, ticket.sessionId)
+      const result = await wallet.revealBackup(active.id, pw, ticket.sessionId)
       if (!access.controller.current(ticket)) return
-      setWords(phrase.split(' '))
+      if (result.walletId !== active.id || result.kind !== active.kind) throw new Error('Backup context changed.')
+      setBackup(result)
       setPw('')
     } catch (error) {
       if (!access.controller.current(ticket)) return
-      setError(passwordError(error))
+      setError(error instanceof Error && error.name === 'Error' ? 'Could not read this wallet’s backup. Try again.' : passwordError(error))
       setPw('')
     } finally {
       if (ticket === null || access.controller.current(ticket)) { pending.current = false; setBusy(false) }
     }
   }
-  const shown = access.active && words.length > 0
-  const footer = shown ? (
-    <Button fullWidth onClick={close}>
-      Done
-    </Button>
-  ) : (
+  const shown = access.active && backup !== null
+  const footer = shown ? <Button fullWidth onClick={close}>Done</Button> : (
     <>
-      <Button variant="secondary" style={{ flex: 1 }} onClick={close}>
-        Cancel
-      </Button>
+      <Button variant="secondary" style={{ flex: 1 }} onClick={close}>Cancel</Button>
       <Button style={{ flex: 1 }} disabled={busy || !pw || access.capture === 'loading'} onClick={() => void reveal()}>
-        {busy ? 'Checking…' : 'Show recovery phrase'}
+        {busy ? 'Checking…' : isKey ? 'Show private key' : 'Show recovery phrase'}
       </Button>
     </>
   )
   return (
-    <Modal open onClose={close} title="Reveal recovery phrase" width={460} footer={footer}>
+    <Modal open onClose={close} title={isKey ? 'Reveal private key' : 'Reveal recovery phrase'} subtitle={active.label} width={500} footer={footer}>
       {shown ? (
-        <SensitiveContent access={access}>
-          <RecoveryPhrase words={words} shown />
-        </SensitiveContent>
+        <>
+          {backup.kind === 'key' && <div style={{ fontSize: 12, overflowWrap: 'anywhere', marginBottom: 12 }}>
+            <div>Algorithm: {backup.algo === 'falcon512' ? 'Falcon-512' : backup.algo === 'schnorr' ? 'Schnorr' : 'ECDSA'}</div>
+            <div>Network: {backup.network}</div><div>Address: {backup.address}</div>
+          </div>}
+          <SensitiveContent access={access}>
+            {backup.kind === 'seed' ? <>
+              <RecoveryPhrase words={backup.mnemonic.split(' ')} shown />
+              {backup.passphrase !== undefined && <>
+                <p className="field-hint">Both the recovery phrase and this passphrase are required to restore this wallet.</p>
+                <SecretText label="BIP39 passphrase" value={backup.passphrase} />
+              </>}
+            </> : <SecretText label="Private key (WIF)" value={backup.wif} />}
+          </SensitiveContent>
+        </>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <PrivacyNote access={access} />
-          <PasswordField label="Password" value={pw} onChange={(event) => setPw(event.target.value)} autoComplete="current-password"
+          <PasswordField label="Wallet password" value={pw} onChange={(event) => setPw(event.target.value)} autoComplete="current-password"
             onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void reveal() }} />
           {error && <p role="alert" className="field-hint field-hint--error" style={{ margin: 0 }}>{error}</p>}
         </div>
       )}
     </Modal>
   )
+}
+
+function SecretText({ label, value }: { label: string; value: string }) {
+  return <div role="group" aria-label={label} style={{ userSelect: 'none', marginTop: 12 }}>
+    <div className="field-label">{label}</div>
+    <div data-testid="backup-secret" style={{ fontFamily: 'var(--mono)', fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: '35vh', overflowY: 'auto', padding: 12, border: '1px solid var(--border)', borderRadius: 10 }}>{value}</div>
+  </div>
 }
 
 function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -675,80 +701,44 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-// Export the active (seed) wallet's watch descriptor. Hidden for watch wallets
-// (no keys to derive from) AND for key wallets (a single fixed address has no
-// derivation to describe — follow it as a watch-only address list instead).
-function WatchCard() {
-  const active = useActiveWallet()
-  const [open, setOpen] = useState(false)
-  if (active === undefined || active.kind !== 'seed') return null
-  return (
-    <SectionCard title="Watch-only">
-      <Row
-        title="Export watch descriptor"
-        detail="Share this wallet's public addresses to follow it on another device — no keys ever leave here."
-        action={
-          <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-            Export
-          </Button>
-        }
-      />
-      <ExportDescriptorModal open={open} onClose={() => setOpen(false)} />
-    </SectionCard>
-  )
-}
-
-function ExportDescriptorModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [text, setText] = useState('')
+function ExportPublicDialog({ active, onClose }: { active: WalletInfo; onClose: () => void }) {
+  const [data, setData] = useState<WalletPublicData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-
+  const generation = useRef(0)
   useEffect(() => {
-    if (!open) return
-    setText('')
-    setError(null)
-    setCopied(false)
-    setBusy(true)
-    void wallet
-      .exportWatchDescriptor()
-      .then(setText)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not export the descriptor.'))
-      .finally(() => setBusy(false))
-  }, [open])
-
-  function copy(): void {
-    void navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    const current = ++generation.current
+    void wallet.exportPublicData(active.id).then((result) => {
+      if (generation.current !== current) return
+      if (result.walletId !== active.id) throw new Error('Wallet changed.')
+      setData(result)
+    }).catch(() => {
+      if (generation.current === current) setError('Could not export this wallet’s public data.')
+    })
+    return () => { generation.current = current + 1 }
+  }, [active.id])
+  async function copy(): Promise<void> {
+    if (!data) return
+    const current = generation.current
+    try {
+      await navigator.clipboard.writeText(data.text)
+      if (current === generation.current) setCopied(true)
+    } catch { if (current === generation.current) setError('Could not copy the public data.') }
   }
-
-  const footer = (
-    <>
-      <Button variant="secondary" style={{ flex: 1 }} onClick={onClose}>
-        Close
-      </Button>
-      <Button style={{ flex: 1 }} disabled={busy || text === ''} onClick={copy}>
-        {copied ? 'Copied' : 'Copy'}
-      </Button>
-    </>
-  )
-
-  return (
-    <Modal open={open} onClose={onClose} title="Watch descriptor" subtitle="Paste this into “Add wallet → Descriptor” on another device" width={460} footer={footer}>
-      <div style={{ paddingBottom: 4 }}>
-        {busy ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 2px', fontSize: 13, color: 'var(--ink-500)' }}>
-            <span className="spinner spinner--xs" aria-hidden="true" /> Building descriptor…
-          </div>
-        ) : error !== null ? (
-          <div className="field-hint field-hint--error">{error}</div>
-        ) : (
-          <TextArea mono readOnly rows={5} value={text} aria-label="Watch descriptor" />
-        )}
-      </div>
-    </Modal>
-  )
+  const addresses = data?.kind === 'addresses'
+  return <Modal open onClose={onClose} title={addresses ? 'Watch addresses' : 'Watch descriptor'}
+    subtitle={active.label} width={460} footer={<>
+      <Button variant="secondary" style={{ flex: 1 }} onClick={onClose}>Close</Button>
+      <Button style={{ flex: 1 }} disabled={!data} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</Button>
+    </>}>
+    <p className="field-hint">Public data restores watch-only access, not spending access.</p>
+    {data && <>
+      <p className="field-hint">Network: {data.network}. Import through Add wallet → {addresses ? 'Addresses' : 'Descriptor'}.</p>
+      <TextArea mono readOnly rows={5} value={data.text} aria-label={addresses ? 'Watch addresses' : 'Watch descriptor'} />
+    </>}
+    {!data && !error && <p className="field-hint">Loading public data…</p>}
+    {error && <p role="alert" className="field-hint field-hint--error">{error}</p>}
+  </Modal>
 }
 
 const shortAddr = (a: string): string => (a.length > 16 ? `${a.slice(0, 10)}…${a.slice(-4)}` : a)
