@@ -122,10 +122,10 @@ export interface WalletOps {
 // held only between scan and confirm/cancel — never stored. Independent of the
 // active wallet.
 export interface SweepOps {
-  scan(wif: string, algo?: AddressAlgo): Promise<SweepScan>
+  scan(wif: string, sessionId: string, algo?: AddressAlgo): Promise<SweepScan>
   build(recipient: string, amountAtomic: bigint | undefined, sendMax: boolean): Promise<SendPreview>
   confirm(): Promise<SendResult>
-  cancel(): void
+  cancel(sessionId: string): void
 }
 
 // Node-selection operations (Network card), implemented in main. select/setOwn/
@@ -280,13 +280,13 @@ export class VaultOrchestrator {
         case 'wallets.addKey':
           return ok(await this.deps.wallets.addKey(request.label, request.wif, request.algo))
         case 'sweep.scan':
-          return ok(await this.deps.sweep.scan(request.wif, request.algo))
+          return ok(await this.deps.sweep.scan(request.wif, request.sessionId, request.algo))
         case 'sweep.build':
           return ok(await this.deps.sweep.build(request.recipient, request.amountAtomic !== undefined ? BigInt(request.amountAtomic) : undefined, request.sendMax))
         case 'sweep.confirm':
           return ok(await this.deps.sweep.confirm())
         case 'sweep.cancel':
-          this.deps.sweep.cancel()
+          this.deps.sweep.cancel(request.sessionId)
           return ok(undefined)
         case 'wallets.restore':
           return ok(await this.deps.wallets.restore(request.mnemonic, request.password))

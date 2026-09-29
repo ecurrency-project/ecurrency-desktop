@@ -10,6 +10,19 @@
 // compromise or a crafted link shouldn't be able to launch arbitrary OS handlers
 // or steer the window onto a foreign (phishing/exploit) origin.
 
+export function rendererDevUrl(isPackaged: boolean, envUrl: string | undefined): string | undefined {
+  return isPackaged ? undefined : envUrl
+}
+
+// IPC trusts a single document, including its query, never an entire origin.
+export function isTrustedRendererDocument(url: string, expectedUrl: string): boolean {
+  try {
+    const actual = new URL(url)
+    const expected = new URL(expectedUrl)
+    return actual.protocol === expected.protocol && actual.host === expected.host && actual.pathname === expected.pathname && actual.search === expected.search
+  } catch { return false }
+}
+
 // Only https links may be opened externally. Everything else — file:,
 // javascript:, mailto:, custom protocol handlers, even http: — is refused, so a
 // crafted or injected link can't invoke arbitrary OS handlers. Unparseable input

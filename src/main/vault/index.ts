@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app } from 'electron'
+import { app, clipboard } from 'electron'
+import { clearImportedKeyClipboard } from '../privacy/clipboard'
 import { btcEsploraDefaultsFor, BtcEsploraClient, ChainClient, type NodeEndpoint } from '@qbtc/chain'
 import { generateMnemonic, hash256, isSchnorrEnabled, masterKeyFromSeed, mnemonicToSeed, parseAccountXpub, toHex, validateMnemonic, type HDKey, type Network } from '@qbtc/crypto'
-import { Vault } from '@qbtc/vault'
+import type { Vault } from '@qbtc/vault'
+import { RestorableVault } from './RestorableVault'
 import { addressFromScripthash, addressFromXpub, decodeAddress, decodeWif, DOWNGRADE, exportAccountXpub, UPGRADE, validateAddress } from '../brand/crypto'
 import { defaultNodesFor } from '../brand/nodes'
 import { PROFILE } from '../brand/profile'
@@ -15,7 +17,8 @@ import { createSeedAddressSource, type AddressSource } from '../wallet/AddressSo
 import { KeyStore } from '../wallet/keyStore'
 import { createKeyAddressSource, importedKeyFromStored, inspectWifKey, keyReceiveOps, signUnsignedTxWithKey, type ImportedKey } from '../wallet/keyWallet'
 import { SeedStore } from '../wallet/seedStore'
-import { createSweepSession, type SweepSession } from '../wallet/sweep'
+import { createSweepSession } from '../wallet/sweep'
+import { SweepSlot } from '../wallet/SweepSlot'
 import { ChainService } from '../wallet/ChainService'
 import { CoinService } from '../wallet/CoinService'
 import { CoinMetaStore } from '../wallet/coinMeta'
@@ -45,6 +48,7 @@ const AUTO_LOCK_MS = 5 * 60 * 1000
 
 
 export interface WalletCore {
+  readonly cancelSensitiveScan: (sessionId: string) => void
   readonly vault: Vault
   readonly orchestrator: VaultOrchestrator
 }
@@ -88,7 +92,7 @@ export function createWalletCore(): WalletCore {
   // seals every wallet's at-rest stores; it lives at the default wallet's path and
   // outlives active-wallet switches. (v1: one seed wallet; watch wallets reuse this
   // key for their sealed public data.)
-  const vault = new Vault(new FileVaultStorage(join(walletDir(userData, DEFAULT_WALLET_ID), 'vault.json')), { autoLockMs: AUTO_LOCK_MS, appDataInfo: PROFILE.appDataInfo })
+  const vault = new RestorableVault(new FileVaultStorage(join(walletDir(userData, DEFAULT_WALLET_ID), 'vault.json')), { autoLockMs: AUTO_LOCK_MS, appDataInfo: PROFILE.appDataInfo })
 
   // The public endpoints this build ships for its network (a brand value; may
   // be empty while a network is unlaunched).
@@ -469,6 +473,7 @@ export function createWalletCore(): WalletCore {
 
   // Drop the old session's caches, build the active one afresh, and warm it if unlocked.
   const rebuildActive = (): void => {
+    disposeSweep()
     active.reset()
     active = buildSession(registry.getActiveId())
     if (unlocked) active.prewarm()
@@ -563,52 +568,51 @@ export function createWalletCore(): WalletCore {
     await store.save({ wif: cleanWif, algo, address: key.address })
     const name = label.trim()
     registry.add({ id, kind: 'key', label: name === '' ? 'Imported key' : name, createdAt: Date.now() })
+    clearImportedKeyClipboard(clipboard, cleanWif)
     return listWallets()
   }
 
   // ── Ephemeral sweep (send from a pasted private key) ─────────────────────────
   // The key is materialized on scan, held here only until confirm/cancel/lock, and
-  // never written to disk or the registry. Independent of the active wallet.
-  let sweep: SweepSession | null = null
-  const disposeSweep = (): void => {
-    sweep?.dispose()
-    sweep = null
-  }
-  const sweepScan = async (wif: string, algoHint?: AddressAlgo): Promise<{ address: string; balanceAtomic: string }> => {
-    disposeSweep()
-    const cleanWif = wif.trim()
-    const { payload, candidates } = decodeWif(cleanWif, NETWORK)
-    payload.fill(0)
-    const algo = algoHint ?? candidates[0]
-    if (algo === undefined || !candidates.includes(algo)) throw new Error('That key cannot be used with the chosen algorithm.')
-    if (algo === 'schnorr' && !isSchnorrEnabled()) throw new Error('Schnorr keys are not enabled yet.')
-    const key = await importedKeyFromStored({ wif: cleanWif, algo, address: '' }, NETWORK)
-    // Snapshot the current chain client so a mid-wizard node change can't repoint it.
-    sweep = createSweepSession(chainClient, key, NETWORK)
-    const { balanceAtomic } = await sweep.scanBalance()
-    return { address: key.address, balanceAtomic }
+  // never written to disk or the registry. Switching the active wallet cancels it.
+  const sweepSlot = new SweepSlot()
+  const disposeSweep = (): void => sweepSlot.dispose()
+  const sweepScan = async (wif: string, sessionId: string, algoHint?: AddressAlgo): Promise<{ address: string; balanceAtomic: string }> => {
+    return sweepSlot.scan(sessionId, async () => {
+      const cleanWif = wif.trim()
+      const { payload, candidates } = decodeWif(cleanWif, NETWORK)
+      payload.fill(0)
+      const algo = algoHint ?? candidates[0]
+      if (algo === undefined || !candidates.includes(algo)) throw new Error('That key cannot be used with the chosen algorithm.')
+      if (algo === 'schnorr' && !isSchnorrEnabled()) throw new Error('Schnorr keys are not enabled yet.')
+      const key = await importedKeyFromStored({ wif: cleanWif, algo, address: '' }, NETWORK)
+      // Snapshot the current chain client so a mid-wizard node change can't repoint it.
+      try { return createSweepSession(chainClient, key, NETWORK) }
+      catch (error) { key.privateKey.fill(0); throw error }
+    })
   }
   const sweepBuild = (recipient: string, amountAtomic: bigint | undefined, sendMax: boolean): Promise<SendPreview> => {
+    const sweep = sweepSlot.session
     if (sweep === null) throw new Error('No key loaded to sweep. Start again.')
     return sweep.send.buildSend(recipient, amountAtomic ?? 0n, undefined, sendMax)
   }
   const sweepConfirm = async (): Promise<SendResult> => {
+    const sweep = sweepSlot.session
     if (sweep === null) throw new Error('No sweep to confirm. Start again.')
     const result = await sweep.send.confirmSend()
-    disposeSweep()
+    sweepSlot.disposeSession(sweep)
     return result
   }
 
-  // Forgot-password recovery: re-create the primary wallet from a recovery phrase with a
-  // new password. The phrase is validated BEFORE wiping anything, so an invalid phrase
-  // can't strand the wallet. With the same seed this is non-destructive — the app-data
+  // Forgot-password recovery atomically replaces the primary vault. A lock cancels
+  // the entire operation; the previous blob survives until commit. With the same
+  // seed this is non-destructive — the app-data
   // key is seed-derived, so every wallet's sealed data still opens; a different phrase
   // effectively starts a fresh primary wallet.
   const restoreFromMnemonic = async (mnemonic: string, password: string): Promise<VaultStatus> => {
     const phrase = mnemonic.trim().replace(/\s+/g, ' ')
     if (!validateMnemonic(phrase)) throw new Error('That recovery phrase is not valid.')
-    await vault.destroy()
-    await vault.create(phrase, password)
+    await vault.restore(phrase, password)
     registry.setActive(DEFAULT_WALLET_ID)
     rebuildActive()
     return vault.getStatus()
@@ -889,7 +893,7 @@ export function createWalletCore(): WalletCore {
     },
     contacts,
     wallets: { list: listWallets, add: addWatchWallet, addSeed: addSeedWallet, inspectKey, addKey: addKeyWallet, restore: restoreFromMnemonic, switch: switchWallet, rename: renameWallet, remove: removeWallet, exportDescriptor: exportWatchDescriptor },
-    sweep: { scan: sweepScan, build: sweepBuild, confirm: sweepConfirm, cancel: disposeSweep },
+    sweep: { scan: sweepScan, build: sweepBuild, confirm: sweepConfirm, cancel: (sessionId) => sweepSlot.dispose(sessionId) },
     node: { get: nodeSettings, select: selectNode, setOwn: setOwnNode, clearOwn: clearOwnNode, addCustom: addCustomNode, removeCustom: removeCustomNode, setTor, status: nodeStatus, setNetwork },
     upgrade: {
       info: async () => ({
@@ -951,7 +955,7 @@ export function createWalletCore(): WalletCore {
     },
   })
 
-  return { vault, orchestrator }
+  return { vault, orchestrator, cancelSensitiveScan: (sessionId: string) => sweepSlot.cancelPending(sessionId) }
 }
 
 // A watch wallet has no keys: every send/sign path refuses.

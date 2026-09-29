@@ -1,4 +1,8 @@
 import { useState, type CSSProperties } from 'react'
+import { SensitiveContent, secretInputProps } from '../components/SensitiveContent'
+import { useSensitiveSession } from '../lib/useSensitiveSession'
+import { useOperation } from '../lib/useOperation'
+import { passwordError } from '../lib/passwordError'
 import { wallet } from '../lib/wallet'
 import { Button, Logo, PasswordField, PasswordStrength, Screen, Subtitle, TextArea, TextField, Title } from '../ui'
 
@@ -8,10 +12,11 @@ import { Button, Logo, PasswordField, PasswordStrength, Screen, Subtitle, TextAr
 // the same phrase this is non-destructive (the app-data key is seed-derived).
 export function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
   const [view, setView] = useState<'unlock' | 'restore'>('unlock')
-  return view === 'unlock' ? <UnlockForm onUnlocked={onUnlocked} onForgot={() => setView('restore')} /> : <RestoreForm onRestored={onUnlocked} onBack={() => setView('unlock')} />
+  const [restored, setRestored] = useState(false)
+  return view === 'unlock' ? <UnlockForm restored={restored} onUnlocked={onUnlocked} onForgot={() => { setRestored(false); setView('restore') }} /> : <RestoreForm onRestored={() => { setRestored(true); setView('unlock') }} onBack={() => setView('unlock')} />
 }
 
-function UnlockForm({ onUnlocked, onForgot }: { onUnlocked: () => void; onForgot: () => void }) {
+function UnlockForm({ onUnlocked, onForgot, restored }: { onUnlocked: () => void; onForgot: () => void; restored: boolean }) {
   const [pw, setPw] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -22,16 +27,11 @@ function UnlockForm({ onUnlocked, onForgot }: { onUnlocked: () => void; onForgot
     setErrorMsg(null)
     try {
       await wallet.unlock(pw)
+      setPw('')
       onUnlocked()
     } catch (e) {
-      // Throttled (too many attempts): show the wait message and KEEP the typed
-      // password — it may be correct. Anything else reads as a wrong password.
-      if (e instanceof Error && e.name === 'UnlockThrottledError') {
-        setErrorMsg(e.message)
-      } else {
-        setErrorMsg('Incorrect password — try again.')
-        setPw('')
-      }
+      setErrorMsg(passwordError(e))
+      setPw('')
     } finally {
       setBusy(false)
     }
@@ -44,14 +44,16 @@ function UnlockForm({ onUnlocked, onForgot }: { onUnlocked: () => void; onForgot
         <div style={{ marginTop: 18 }}>
           <Title>Welcome back</Title>
         </div>
-        <Subtitle>Enter your password to unlock.</Subtitle>
+        <Subtitle>{restored ? 'Wallet restored. Enter your new password to unlock.' : 'Enter your password to unlock.'}</Subtitle>
         <div style={{ width: '100%', marginTop: 22, textAlign: 'left' }}>
           <TextField
             type="password"
+            autoComplete="current-password"
+            spellCheck={false}
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void submit()
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) void submit()
             }}
             autoFocus
             placeholder="Password"
@@ -64,7 +66,7 @@ function UnlockForm({ onUnlocked, onForgot }: { onUnlocked: () => void; onForgot
         <Button fullWidth size="cta" disabled={busy || pw.length === 0} onClick={() => void submit()} style={{ marginTop: 18 }}>
           Unlock
         </Button>
-        <button type="button" onClick={onForgot} style={linkButton}>
+        <button type="button" disabled={busy} onClick={onForgot} style={linkButton}>
           Forgot password? Restore from recovery phrase
         </button>
       </div>
@@ -77,20 +79,27 @@ function RestoreForm({ onRestored, onBack }: { onRestored: () => void; onBack: (
   const [pw, setPw] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const operation = useOperation()
+  const { busy } = operation
+  const access = useSensitiveSession('seed-input')
+  const back = (): void => {
+    if (operation.pending.current) return
+    access.controller.stop('closed'); setPhrase(''); setPw(''); setConfirm(''); onBack()
+  }
   const valid = phrase.trim().length > 0 && pw.length >= 8 && pw === confirm
 
   async function submit(): Promise<void> {
-    if (busy || !valid) return
-    setBusy(true)
+    if (!valid || !access.controller.ticket() || !operation.start()) return
     setError(null)
     try {
       await wallet.restoreWallet(phrase, pw)
+      if (!operation.current()) return
+      setPhrase(''); setPw(''); setConfirm(''); access.controller.stop('completed')
       onRestored()
     } catch (e) {
-      setError(e instanceof Error && e.message !== '' ? e.message : 'Could not restore from that phrase.')
+      if (operation.current()) setError(e instanceof Error && e.message !== '' ? e.message : 'Could not restore from that phrase.')
     } finally {
-      setBusy(false)
+      operation.finish()
     }
   }
 
@@ -102,29 +111,33 @@ function RestoreForm({ onRestored, onBack }: { onRestored: () => void; onBack: (
           <Title>Restore wallet</Title>
         </div>
         <Subtitle>Enter your recovery phrase and choose a new password.</Subtitle>
-        <div style={{ width: '100%', marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
-          <TextArea
-            label="Recovery phrase"
-            mono
-            rows={3}
-            value={phrase}
-            onChange={(e) => setPhrase(e.target.value)}
-            placeholder="word1 word2 … (12 or 24 words)"
-            aria-label="Recovery phrase"
-            state={error !== null ? 'error' : 'default'}
-            hint={error ?? 'Re-creates your wallet on this device. Use the phrase for this wallet.'}
-          />
-          <div>
-            <PasswordField label="New password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 8 characters" aria-label="New password" />
-            {pw.length > 0 && <PasswordStrength password={pw} />}
+        <SensitiveContent access={access} action="Enter recovery phrase" layout="screen">
+          <div style={{ width: '100%', marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
+            <TextArea {...secretInputProps}
+              label="Recovery phrase"
+              mono
+              rows={3}
+              value={phrase}
+              onChange={(e) => setPhrase(e.target.value)}
+              placeholder="word1 word2 … (12 or 24 words)"
+              aria-label="Recovery phrase"
+              state={error !== null ? 'error' : 'default'}
+              hint="Re-creates your wallet on this device. Use the phrase for this wallet."
+            />
+            <div>
+              <PasswordField autoComplete="new-password" label="New password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 8 characters" aria-label="New password" />
+              {pw.length > 0 && <PasswordStrength password={pw} />}
+            </div>
+            <PasswordField autoComplete="new-password" label="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter password" aria-label="Confirm password" />
+            {confirm.length > 0 && pw !== confirm && <div className="field-hint field-hint--error">Passwords don&apos;t match yet.</div>}
           </div>
-          <PasswordField label="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter password" aria-label="Confirm password" />
-          {confirm.length > 0 && pw !== confirm && <div className="field-hint field-hint--error">Passwords don&apos;t match yet.</div>}
-        </div>
-        <Button fullWidth size="cta" disabled={busy || !valid} onClick={() => void submit()} style={{ marginTop: 18 }}>
-          {busy ? 'Restoring…' : 'Restore wallet'}
-        </Button>
-        <button type="button" onClick={onBack} style={linkButton}>
+          <Button fullWidth size="cta" disabled={busy || !valid} onClick={() => void submit()} style={{ marginTop: 18 }}>
+            {busy ? 'Restoring…' : 'Restore wallet'}
+          </Button>
+        </SensitiveContent>
+        {busy && <p role="status">Restoring wallet…</p>}
+        {error !== null && <p role="alert" className="field-hint field-hint--error">{error}</p>}
+        <button type="button" disabled={busy} onClick={back} style={linkButton}>
           Back to unlock
         </button>
       </div>

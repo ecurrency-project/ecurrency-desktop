@@ -1,5 +1,11 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Contact, NodeKind, NodeSettings, WalletInfo } from '../../shared/protocol'
+import { PrivacyNote, SensitiveContent } from '../components/SensitiveContent'
+import { RecoveryPhrase } from '../components/RecoveryPhrase'
+import { useSensitiveSession } from '../lib/useSensitiveSession'
+import type { SensitiveTicket } from '../lib/sensitiveSession'
+import { useOperation } from '../lib/useOperation'
+import { passwordError } from '../lib/passwordError'
 import { brand } from '../brand'
 import { AddWalletDialog } from '../components/AddWalletDialog'
 import { setAdvancedMode, useAdvancedMode } from '../lib/prefs'
@@ -543,84 +549,70 @@ function SecurityCard() {
 }
 
 function RevealPhraseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return open ? <RevealPhraseDialog onClose={onClose} /> : null
+}
+
+function RevealPhraseDialog({ onClose }: { onClose: () => void }) {
   const [pw, setPw] = useState('')
   const [words, setWords] = useState<readonly string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const shown = words.length > 0
-
-  useEffect(() => {
-    if (open) {
-      setPw('')
-      setWords([])
-      setError(null)
-      setBusy(false)
-    }
-  }, [open])
-
+  const pending = useRef(false)
+  const access = useSensitiveSession('reveal', true, () => {
+    setPw(''); setWords([]); setError(null); setBusy(false); pending.current = false
+  })
+  const close = (): void => { access.controller.stop('closed'); onClose() }
+  // One click starts the protected session and checks the password. The words
+  // exist only while that session lasts; the next reveal needs the password again.
   async function reveal(): Promise<void> {
-    if (busy || pw.length === 0) return
+    if (pending.current || !pw) return
+    pending.current = true
     setBusy(true)
     setError(null)
+    let ticket: SensitiveTicket | null = null
     try {
-      const phrase = await wallet.revealMnemonic(pw)
+      if (!(await access.controller.begin('reveal'))) return
+      ticket = access.controller.ticket()
+      if (!ticket) return
+      const phrase = await wallet.revealMnemonic(pw, ticket.sessionId)
+      if (!access.controller.current(ticket)) return
       setWords(phrase.split(' '))
       setPw('')
-    } catch {
-      setError('Incorrect password — try again.')
+    } catch (error) {
+      if (!access.controller.current(ticket)) return
+      setError(passwordError(error))
       setPw('')
     } finally {
-      setBusy(false)
+      if (ticket === null || access.controller.current(ticket)) { pending.current = false; setBusy(false) }
     }
   }
-
+  const shown = access.active && words.length > 0
   const footer = shown ? (
-    <Button fullWidth onClick={onClose}>
+    <Button fullWidth onClick={close}>
       Done
     </Button>
   ) : (
     <>
-      <Button variant="secondary" style={{ flex: 1 }} disabled={busy} onClick={onClose}>
+      <Button variant="secondary" style={{ flex: 1 }} onClick={close}>
         Cancel
       </Button>
-      <Button style={{ flex: 1 }} disabled={busy || pw.length === 0} onClick={() => void reveal()}>
-        {busy ? 'Checking…' : 'Reveal'}
+      <Button style={{ flex: 1 }} disabled={busy || !pw || access.capture === 'loading'} onClick={() => void reveal()}>
+        {busy ? 'Checking…' : 'Show recovery phrase'}
       </Button>
     </>
   )
-
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Reveal recovery phrase"
-      icon={
-        <span style={{ display: 'flex', color: 'var(--ink-500)' }}>
-          <KeyIcon size={16} />
-        </span>
-      }
-      width={440}
-      footer={footer}
-    >
+    <Modal open onClose={close} title="Reveal recovery phrase" width={460} footer={footer}>
       {shown ? (
-        <div style={{ paddingBottom: 4 }}>
-          <Pill tone="warning" icon={<ShieldIcon size={14} />}>
-            Don&apos;t share this with anyone
-          </Pill>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
-            {words.map((w, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--well)' }}>
-                <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-300)' }}>{i + 1}</span>
-                <span style={{ fontSize: 13.5, fontFamily: 'var(--mono)', fontWeight: 500, color: 'var(--ink-900)' }}>{w}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <SensitiveContent access={access}>
+          <RecoveryPhrase words={words} shown />
+        </SensitiveContent>
       ) : (
-        <div style={{ paddingBottom: 4 }}>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-500)', lineHeight: 1.5 }}>Enter your password to reveal your 12-word phrase. Make sure no one is watching your screen.</p>
-          <PasswordField value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Password" aria-label="Password" />
-          {error !== null && <div className="field-hint field-hint--error">{error}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <PrivacyNote access={access} />
+          <PasswordField label="Password" value={pw} onChange={(event) => setPw(event.target.value)} autoComplete="current-password"
+            onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void reveal() }} />
+          {error && <p role="alert" className="field-hint field-hint--error" style={{ margin: 0 }}>{error}</p>}
         </div>
       )}
     </Modal>
@@ -628,41 +620,37 @@ function RevealPhraseModal({ open, onClose }: { open: boolean; onClose: () => vo
 }
 
 function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return open ? <ChangePasswordDialog onClose={onClose} /> : null
+}
+
+function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const operation = useOperation()
+  const { busy } = operation
+  const close = (): void => { if (!operation.pending.current) { setCurrent(''); setNext(''); setConfirm(''); onClose() } }
   const valid = current.length > 0 && next.length >= 8 && next === confirm
 
-  useEffect(() => {
-    if (open) {
-      setCurrent('')
-      setNext('')
-      setConfirm('')
-      setError(null)
-      setBusy(false)
-    }
-  }, [open])
-
   async function submit(): Promise<void> {
-    if (busy || !valid) return
-    setBusy(true)
+    if (!valid || !operation.start()) return
     setError(null)
     try {
       await wallet.changePassword(current, next)
+      if (!operation.current()) return
+      setCurrent(''); setNext(''); setConfirm('')
       onClose()
     } catch (e) {
-      const m = (e as Error).message
-      setError(m === '' ? 'Could not change the password.' : m)
+      if (operation.current()) setError(passwordError(e))
     } finally {
-      setBusy(false)
+      operation.finish()
     }
   }
 
   const footer = (
     <>
-      <Button variant="secondary" style={{ flex: 1 }} disabled={busy} onClick={onClose}>
+      <Button variant="secondary" style={{ flex: 1 }} disabled={busy} onClick={close}>
         Cancel
       </Button>
       <Button style={{ flex: 1 }} disabled={busy || !valid} onClick={() => void submit()}>
@@ -672,14 +660,14 @@ function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => 
   )
 
   return (
-    <Modal open={open} onClose={onClose} title="Change password" width={420} footer={footer}>
+    <Modal open onClose={close} title="Change password" width={420} footer={footer}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 4 }}>
         <PasswordField label="Current password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="Current password" aria-label="Current password" />
         <div>
-          <PasswordField label="New password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="At least 8 characters" aria-label="New password" />
+          <PasswordField autoComplete="new-password" label="New password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="At least 8 characters" aria-label="New password" />
           {next.length > 0 && <PasswordStrength password={next} />}
         </div>
-        <PasswordField label="Confirm new password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter new password" aria-label="Confirm new password" />
+        <PasswordField autoComplete="new-password" label="Confirm new password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter new password" aria-label="Confirm new password" />
         {confirm.length > 0 && next !== confirm && <div className="field-hint field-hint--error">Passwords don&apos;t match yet.</div>}
         {error !== null && <div className="field-hint field-hint--error">{error}</div>}
       </div>

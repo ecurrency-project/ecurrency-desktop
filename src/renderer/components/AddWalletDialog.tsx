@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react'
-import type { AddressAlgo, KeyInspection, WatchInput } from '../../shared/protocol'
+import { useState } from 'react'
+import type { AddressAlgo, WatchInput } from '../../shared/protocol'
+import { SensitiveContent, secretInputProps } from './SensitiveContent'
+import { useSensitiveSession } from '../lib/useSensitiveSession'
+import { useKeyInspection } from '../lib/useKeyInspection'
+import { useOperation } from '../lib/useOperation'
 import { brand } from '../brand'
 import { resetWalletData, setWallets, useWallets } from '../lib/walletData'
 import { wallet } from '../lib/wallet'
@@ -45,6 +49,10 @@ function toInput(kind: Kind, text: string): WatchInput {
 // add calls; validation errors surface inline. Fields reset each time the dialog opens,
 // and the new wallet is switched to on success.
 export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return open ? <AddWalletForm onClose={onClose} /> : null
+}
+
+function AddWalletForm({ onClose }: { onClose: () => void }) {
   const wallets = useWallets()
   const [mode, setMode] = useState<Mode>('watch')
   const [kind, setKind] = useState<Kind>('descriptor')
@@ -52,56 +60,23 @@ export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () 
   const [text, setText] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [inspection, setInspection] = useState<KeyInspection | null>(null)
-  const [keyAlgo, setKeyAlgo] = useState<AddressAlgo | null>(null)
+  const operation = useOperation()
+  const { busy } = operation
+  const access = useSensitiveSession(mode === 'key' ? 'key-input' : 'seed-input', mode !== 'watch')
+  const { inspection, keyAlgo, setKeyAlgo } = useKeyInspection(text, mode === 'key', access, setError)
 
-  useEffect(() => {
-    if (open) {
-      setMode('watch')
-      setKind('descriptor')
-      setLabel('')
-      setText('')
-      setPassphrase('')
-      setError(null)
-      setBusy(false)
-      setInspection(null)
-      setKeyAlgo(null)
-    }
-  }, [open])
-
-  // Live key preview (key mode): debounce the pasted text, then ask main which
-  // algorithms the WIF admits and the address each would watch — so the user
-  // confirms against the expected address BEFORE anything is stored.
-  useEffect(() => {
-    if (mode !== 'key') return undefined
-    setInspection(null)
-    setKeyAlgo(null)
-    setError(null)
-    const wif = text.trim()
-    if (wif === '') return undefined
-    let active = true
-    const timer = setTimeout(() => {
-      wallet
-        .inspectKey(wif)
-        .then((res) => {
-          if (!active) return
-          setInspection(res)
-          setKeyAlgo(res.candidates[0] ?? null)
-        })
-        .catch((e) => {
-          if (active) setError((e as Error).message)
-        })
-    }, 300)
-    return () => {
-      active = false
-      clearTimeout(timer)
-    }
-  }, [mode, text])
+  const close = (): void => {
+    if (operation.pending.current) return
+    access.controller.stop('closed'); setText(''); setPassphrase(''); onClose()
+  }
+  const changeMode = (value: Mode): void => {
+    if (operation.pending.current) return
+    access.controller.stop('mode'); setText(''); setPassphrase(''); setError(null); setMode(value)
+  }
 
   const add = async (): Promise<void> => {
+    if ((mode !== 'watch' && !access.controller.ticket()) || !operation.start()) return
     setError(null)
-    setBusy(true)
     try {
       const before = wallets.map((w) => w.id)
       const list =
@@ -110,38 +85,32 @@ export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () 
           : mode === 'key'
             ? await wallet.addKeyWallet(label, text, keyAlgo ?? undefined)
             : await wallet.addWatchWallet(label, toInput(kind, text))
-      // Best-effort hygiene: if the clipboard still holds the pasted key, wipe it.
-      if (mode === 'key') {
-        try {
-          if ((await navigator.clipboard.readText()).trim() === text.trim()) {
-            await navigator.clipboard.writeText('')
-          }
-        } catch {
-          // Clipboard access can be denied — nothing to clean up then.
-        }
-      }
+      if (!operation.current()) return
+      setText(''); setPassphrase(''); access.controller.stop('completed')
       // Switch to the wallet we just added (the id that wasn't present before).
       const created = list.find((w) => !before.includes(w.id))
       if (created !== undefined) {
-        setWallets(await wallet.switchWallet(created.id))
+        const switched = await wallet.switchWallet(created.id)
+        if (!operation.current()) return
+        setWallets(switched)
         resetWalletData()
       } else {
         setWallets(list)
       }
       onClose()
     } catch (e) {
-      setError((e as Error).message)
+      if (operation.current()) setError((e as Error).message)
     } finally {
-      setBusy(false)
+      operation.finish()
     }
   }
 
   const footer = (
     <>
-      <Button variant="secondary" style={{ flex: 1 }} disabled={busy} onClick={onClose}>
+      <Button variant="secondary" style={{ flex: 1 }} disabled={busy} onClick={close}>
         Cancel
       </Button>
-      <Button style={{ flex: 1 }} disabled={busy || text.trim().length === 0 || (mode === 'key' && keyAlgo === null)} onClick={() => void add()}>
+      <Button style={{ flex: 1 }} disabled={busy || (mode !== 'watch' && !access.active) || text.trim().length === 0 || (mode === 'key' && keyAlgo === null)} onClick={() => void add()}>
         {busy ? 'Adding…' : 'Add wallet'}
       </Button>
     </>
@@ -154,13 +123,13 @@ export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () 
         ? 'Import a single private key — one fixed address, stored encrypted on this device'
         : "Follow a wallet's balance without its keys"
   return (
-    <Modal open={open} onClose={onClose} title="Add wallet" subtitle={subtitle} width={460} footer={footer}>
+    <Modal open onClose={close} title="Add wallet" subtitle={subtitle} width={460} footer={footer}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 4 }}>
-        <Segmented options={MODES} value={mode} onChange={setMode} ariaLabel="Wallet type" />
+        <Segmented options={MODES} value={mode} onChange={changeMode} ariaLabel="Wallet type" />
         <TextField label="Name" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={mode === 'seed' ? 'e.g. Savings' : 'e.g. Cold vault'} aria-label="Wallet name" />
         {mode === 'seed' ? (
-          <>
-            <TextArea
+          <SensitiveContent access={access} action="Enter recovery phrase">
+            <TextArea {...secretInputProps}
               label="Recovery phrase"
               mono
               rows={3}
@@ -171,11 +140,12 @@ export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () 
               state={error !== null ? 'error' : 'default'}
               hint={error ?? 'The 12- or 24-word phrase of the wallet to import.'}
             />
-            <PasswordField label="Passphrase (optional)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} placeholder="BIP39 passphrase, if the wallet uses one" aria-label="BIP39 passphrase" />
-          </>
+            <PasswordField {...secretInputProps} label="Passphrase (optional)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} placeholder="BIP39 passphrase, if the wallet uses one" aria-label="BIP39 passphrase" />
+          </SensitiveContent>
         ) : mode === 'key' ? (
           <>
-            <TextArea
+          <SensitiveContent access={access} action="Enter private key">
+            <TextArea {...secretInputProps}
               label="Private key"
               mono
               rows={3}
@@ -186,7 +156,8 @@ export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () 
               state={error !== null ? 'error' : 'default'}
               hint={error ?? 'One key = one fixed address. Change from sends returns to that same address.'}
             />
-            {inspection !== null && keyAlgo !== null && (
+          </SensitiveContent>
+            {access.active && inspection !== null && keyAlgo !== null && (
               <>
                 {inspection.candidates.length > 1 && (
                   <Segmented ariaLabel="Key algorithm" value={keyAlgo} onChange={setKeyAlgo} options={inspection.candidates.map((a) => ({ value: a, label: ALGO_LABEL[a] }))} />
@@ -204,11 +175,11 @@ export function AddWalletDialog({ open, onClose }: { open: boolean; onClose: () 
                 </div>
               </>
             )}
-            <Alert variant="caution">
+            {access.active && <Alert variant="caution">
                 <span>
                 Your recovery phrase does <strong>not</strong> back up this wallet — keep a separate backup of the key itself. Anyone holding the key can spend these funds.
               </span>
-              </Alert>
+              </Alert>}
           </>
         ) : (
           <>

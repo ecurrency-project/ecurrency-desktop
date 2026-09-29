@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { BridgeApi } from '../shared/bridge'
+import { PRIVACY_CHANNEL, PRIVACY_EVENT_CHANNEL, type PrivacyApi, type PrivacyRequest, type SessionRevoked } from '../shared/privacy'
 import {
   WALLET_CHANNEL,
   WALLET_EVENT_CHANNEL,
@@ -43,27 +45,21 @@ import {
 
 // The only code with both Electron access and a line to the renderer. It exposes
 // a narrow, typed API — never ipcRenderer itself — across contextIsolation.
-async function request<T>(req: WalletRequest | VaultRequest): Promise<T> {
-  const res = (await ipcRenderer.invoke(WALLET_CHANNEL, req)) as WalletResponse<T>
-  if (!res.ok) {
-    const err = new Error(res.error.message)
-    err.name = res.error.name
-    throw err
-  }
-  return res.value
+async function request<T>(req: WalletRequest | VaultRequest): Promise<WalletResponse<T>> {
+  return ipcRenderer.invoke(WALLET_CHANNEL, req) as Promise<WalletResponse<T>>
 }
 
-const api: WalletApi = {
+const api: BridgeApi<WalletApi> = {
   ping: () => request<PingResult>({ type: 'ping' }),
   getStatus: () => request<VaultStatus>({ type: 'vault.getStatus' }),
   create: (mnemonic, password) => request<VaultStatus>({ type: 'vault.create', mnemonic, password }),
   unlock: (password) => request<VaultStatus>({ type: 'vault.unlock', password }),
   lock: () => request<VaultStatus>({ type: 'vault.lock' }),
   destroy: () => request<VaultStatus>({ type: 'vault.destroy' }),
-  revealMnemonic: (password) => request<string>({ type: 'vault.revealMnemonic', password }),
+  revealMnemonic: (password, sessionId) => request<string>({ type: 'vault.revealMnemonic', password, sessionId }),
   changePassword: (oldPassword, newPassword) => request<void>({ type: 'vault.changePassword', oldPassword, newPassword }),
   noteActivity: () => request<void>({ type: 'vault.noteActivity' }),
-  generateMnemonic: () => request<string>({ type: 'vault.generateMnemonic' }),
+  generateMnemonic: (sessionId) => request<string>({ type: 'vault.generateMnemonic', sessionId }),
   validateMnemonic: (phrase) => request<boolean>({ type: 'vault.validateMnemonic', phrase }),
   getReceiveAddress: (algo) => request<string>({ type: 'wallet.getReceiveAddress', algo }),
   getNewReceiveAddress: (algo) => request<string>({ type: 'wallet.getNewReceiveAddress', algo }),
@@ -91,10 +87,10 @@ const api: WalletApi = {
   addSeedWallet: (label, mnemonic, passphrase) => request<readonly WalletInfo[]>({ type: 'wallets.addSeed', label, mnemonic, passphrase }),
   inspectKey: (wif) => request<KeyInspection>({ type: 'wallets.inspectKey', wif }),
   addKeyWallet: (label, wif, algo) => request<readonly WalletInfo[]>({ type: 'wallets.addKey', label, wif, algo }),
-  sweepScan: (wif, algo) => request<SweepScan>({ type: 'sweep.scan', wif, algo }),
+  sweepScan: (wif, sessionId, algo) => request<SweepScan>({ type: 'sweep.scan', wif, sessionId, algo }),
   sweepBuild: (recipient, amountAtomic, sendMax) => request<SendPreview>({ type: 'sweep.build', recipient, amountAtomic, sendMax }),
   sweepConfirm: () => request<SendResult>({ type: 'sweep.confirm' }),
-  sweepCancel: () => request<void>({ type: 'sweep.cancel' }),
+  sweepCancel: (sessionId) => request<void>({ type: 'sweep.cancel', sessionId }),
   restoreWallet: (mnemonic, password) => request<VaultStatus>({ type: 'wallets.restore', mnemonic, password }),
   switchWallet: (id) => request<readonly WalletInfo[]>({ type: 'wallets.switch', id }),
   renameWallet: (id, label) => request<readonly WalletInfo[]>({ type: 'wallets.rename', id, label }),
@@ -143,3 +139,19 @@ const updater: UpdaterApi = {
 
 contextBridge.exposeInMainWorld('wallet', api)
 contextBridge.exposeInMainWorld('updater', updater)
+
+async function privacyRequest<T>(req: PrivacyRequest): Promise<WalletResponse<T>> {
+  return ipcRenderer.invoke(PRIVACY_CHANNEL, req) as Promise<WalletResponse<T>>
+}
+const privacy: BridgeApi<PrivacyApi> = {
+  getCaptureStatus: () => privacyRequest({ type: 'status' }),
+  begin: (purpose, acknowledged) => privacyRequest({ type: 'begin', purpose, acknowledged }),
+  end: (sessionId) => privacyRequest({ type: 'end', sessionId }),
+  cleared: () => privacyRequest({ type: 'cleared' }),
+  onRevoked: (listener) => {
+    const handler = (_event: unknown, event: SessionRevoked): void => listener(event)
+    ipcRenderer.on(PRIVACY_EVENT_CHANNEL, handler)
+    return () => { ipcRenderer.removeListener(PRIVACY_EVENT_CHANNEL, handler) }
+  },
+}
+contextBridge.exposeInMainWorld('privacy', privacy)

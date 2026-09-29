@@ -19,10 +19,21 @@ export class FileVaultStorage implements VaultStorage {
   }
 
   async write(blob: string): Promise<void> {
+    return this.replace(blob, () => {})
+  }
+
+  async replace(blob: string, check: () => void): Promise<void> {
+    check()
     await fs.mkdir(dirname(this.file), { recursive: true })
     const tmp = `${this.file}.tmp`
-    await fs.writeFile(tmp, blob, { encoding: 'utf8', mode: 0o600 })
-    await fs.rename(tmp, this.file)
+    try {
+      check()
+      await fs.writeFile(tmp, blob, { encoding: 'utf8', mode: 0o600 })
+      check()
+      await fs.rename(tmp, this.file)
+    } finally {
+      await fs.unlink(tmp).catch(() => {})
+    }
   }
 
   async clear(): Promise<void> {

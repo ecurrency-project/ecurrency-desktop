@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react'
-import type { AddressAlgo, KeyInspection, SendPreview } from '../../shared/protocol'
+import { useLayoutEffect, useRef, useState } from 'react'
+import type { AddressAlgo, SendPreview } from '../../shared/protocol'
+import { SensitiveContent, secretInputProps } from './SensitiveContent'
+import { useSensitiveSession } from '../lib/useSensitiveSession'
+import { useKeyInspection } from '../lib/useKeyInspection'
+import { useOperation } from '../lib/useOperation'
 import { formatNative, parseNative } from '../lib/format'
 import { wallet } from '../lib/wallet'
 import { useAssetLabel } from '../lib/walletData'
@@ -20,15 +24,19 @@ type Step = 'key' | 'form' | 'review' | 'done'
 const ALGO_LABEL: Record<AddressAlgo, string> = { ecdsa: 'ECDSA', schnorr: 'Schnorr', falcon512: 'Falcon-512' }
 
 export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return open ? <SendFromKeyForm onClose={onClose} /> : null
+}
+
+function SendFromKeyForm({ onClose }: { onClose: () => void }) {
   const asset = useAssetLabel()
   const [step, setStep] = useState<Step>('key')
-  const [busy, setBusy] = useState(false)
+  const operation = useOperation()
+  const { busy } = operation
+  const sweepId = useRef<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Key step.
   const [wif, setWif] = useState('')
-  const [inspection, setInspection] = useState<KeyInspection | null>(null)
-  const [keyAlgo, setKeyAlgo] = useState<AddressAlgo | null>(null)
 
   // Scan result + form / review / done.
   const [scanned, setScanned] = useState<{ address: string; balanceAtomic: string } | null>(null)
@@ -38,67 +46,43 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
   const [preview, setPreview] = useState<SendPreview | null>(null)
   const [txid, setTxid] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (open) {
-      setStep('key')
-      setBusy(false)
-      setError(null)
-      setWif('')
-      setInspection(null)
-      setKeyAlgo(null)
-      setScanned(null)
-      setRecipient('')
-      setAmount('')
-      setSendMax(false)
-      setPreview(null)
-      setTxid(null)
-    }
-  }, [open])
-
-  // Live key preview — same debounce + inspect flow as the import dialog.
-  useEffect(() => {
-    if (!open || step !== 'key') return undefined
-    setInspection(null)
-    setKeyAlgo(null)
-    setError(null)
-    const text = wif.trim()
-    if (text === '') return undefined
-    let active = true
-    const timer = setTimeout(() => {
-      wallet
-        .inspectKey(text)
-        .then((res) => {
-          if (!active) return
-          setInspection(res)
-          setKeyAlgo(res.candidates[0] ?? null)
-        })
-        .catch((e) => {
-          if (active) setError((e as Error).message)
-        })
-    }, 300)
-    return () => {
-      active = false
-      clearTimeout(timer)
-    }
-  }, [open, step, wif])
+  const cancelScan = (): void => {
+    const id = sweepId.current
+    sweepId.current = null
+    if (id) void wallet.sweepCancel(id).catch(() => {})
+  }
+  const keyStep = useRef(true)
+  const access = useSensitiveSession('key-input', step === 'key', () => {
+    if (keyStep.current) cancelScan()
+  })
+  const { inspection, keyAlgo, setKeyAlgo } = useKeyInspection(wif, step === 'key', access, setError)
+  useLayoutEffect(() => () => { cancelScan() }, [])
 
   // Materialize the key in main and read its balance. Nothing is stored.
   const proceed = async (): Promise<void> => {
-    if (keyAlgo === null) return
-    setBusy(true)
+    const ticket = access.controller.ticket()
+    if (keyAlgo === null || !ticket || !operation.start()) return
+    sweepId.current = ticket.sessionId
     setError(null)
     try {
-      setScanned(await wallet.sweepScan(wif, keyAlgo))
+      const result = await wallet.sweepScan(wif, ticket.sessionId, keyAlgo)
+      if (!operation.current() || !access.controller.current(ticket)) {
+        void wallet.sweepCancel(ticket.sessionId).catch(() => {})
+        return
+      }
+      keyStep.current = false
+      setWif('')
+      setScanned(result)
       setStep('form')
     } catch (e) {
-      setError((e as Error).message)
+      if (access.controller.current(ticket)) setError((e as Error).message)
     } finally {
-      setBusy(false)
+      operation.finish()
     }
   }
 
   const review = async (): Promise<void> => {
-    setBusy(true)
+    if (!operation.start()) return
     setError(null)
     try {
       let atomic: string | undefined
@@ -109,34 +93,39 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
           throw new Error('Enter a valid amount.')
         }
       }
-      setPreview(await wallet.sweepBuild(recipient.trim(), atomic, sendMax))
+      const result = await wallet.sweepBuild(recipient.trim(), atomic, sendMax)
+      if (!operation.current()) return
+      setPreview(result)
       setStep('review')
     } catch (e) {
-      setError((e as Error).message)
+      if (operation.current()) setError((e as Error).message)
     } finally {
-      setBusy(false)
+      operation.finish()
     }
   }
 
   const confirm = async (): Promise<void> => {
-    setBusy(true)
+    if (!operation.start()) return
     setError(null)
     try {
       const res = await wallet.sweepConfirm()
+      if (!operation.current()) return
+      sweepId.current = null
+      setWif('')
       setTxid(res.txid)
       setStep('done')
     } catch (e) {
-      setError((e as Error).message)
+      if (operation.current()) setError((e as Error).message)
     } finally {
-      setBusy(false)
+      operation.finish()
     }
   }
 
   // Closing before confirm abandons the sweep — main wipes the key. After
   // 'done' the key is already gone; just close.
   const close = (): void => {
-    if (busy) return
-    if (scanned !== null && step !== 'done') void wallet.sweepCancel().catch(() => {})
+    if (operation.pending.current && step !== 'key') return
+    access.controller.stop('closed'); cancelScan(); setWif('')
     onClose()
   }
 
@@ -145,10 +134,10 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
   const footer =
     step === 'key' ? (
       <>
-        <Button variant="secondary" style={{ flex: 1 }} disabled={busy} onClick={close}>
+        <Button variant="secondary" style={{ flex: 1 }} onClick={close}>
           Cancel
         </Button>
-        <Button style={{ flex: 1 }} disabled={busy || keyAlgo === null} onClick={() => void proceed()}>
+        <Button style={{ flex: 1 }} disabled={busy || !access.active || keyAlgo === null} onClick={() => void proceed()}>
           {busy ? 'Scanning…' : 'Continue'}
         </Button>
       </>
@@ -186,11 +175,12 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
           : undefined
 
   return (
-    <Modal open={open} onClose={close} title="Send from a key" subtitle={subtitle} width={470} footer={footer}>
+    <Modal open onClose={close} title="Send from a key" subtitle={subtitle} width={470} footer={footer}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 4 }}>
         {step === 'key' && (
           <>
-            <TextArea
+          <SensitiveContent access={access} action="Enter private key">
+            <TextArea {...secretInputProps}
               label="Private key"
               mono
               rows={3}
@@ -201,7 +191,8 @@ export function SendFromKeyDialog({ open, onClose }: { open: boolean; onClose: (
               state={error !== null ? 'error' : 'default'}
               hint={error ?? 'Held in memory for this flow only — nothing is written to disk.'}
             />
-            {inspection !== null && keyAlgo !== null && (
+          </SensitiveContent>
+            {access.active && inspection !== null && keyAlgo !== null && (
               <>
                 {inspection.candidates.length > 1 && (
                   <Segmented ariaLabel="Key algorithm" value={keyAlgo} onChange={setKeyAlgo} options={inspection.candidates.map((a) => ({ value: a, label: ALGO_LABEL[a] }))} />

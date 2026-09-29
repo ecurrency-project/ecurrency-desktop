@@ -38,8 +38,6 @@ export function buildAppMenu(): Menu {
         aboutItem,
         checkForUpdatesItem,
         { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
         { role: 'hide', label: `Hide ${PRODUCT_NAME}` },
         { role: 'hideOthers' },
         { role: 'unhide' },
@@ -49,7 +47,7 @@ export function buildAppMenu(): Menu {
     })
   }
 
-  template.push({ role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' })
+  template.push({ role: 'editMenu' }, app.isPackaged ? { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] } : { role: 'viewMenu' }, { role: 'windowMenu' })
 
   const helpItems: MenuItemConstructorOptions[] = []
   if (HOMEPAGE !== null) {

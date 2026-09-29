@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { VaultStatus } from '../shared/protocol'
 import { startActivityReporting } from './lib/activity'
+import { privacy } from './lib/privacy'
+import { afterPaint } from './lib/sensitiveSession'
 import { setTheme, useTheme } from './lib/prefs'
 import { wallet } from './lib/wallet'
 import { networkLabel, nodeDotColor, useBuildNetwork, useNodeStatus } from './lib/walletData'
@@ -56,6 +58,12 @@ export function App() {
       active = false
       unsubscribe()
     }
+  }, [])
+
+  // A fresh document (first load, reload, crash recovery) shows no secret. Once it
+  // has painted, main may lift capture protection kept from the previous one.
+  useEffect(() => {
+    afterPaint(() => { void privacy.cleared().catch(() => {}) })
   }, [])
 
   // The OS window title comes from the brand config; index.html stays neutral.

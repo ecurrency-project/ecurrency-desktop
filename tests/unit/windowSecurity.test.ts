@@ -1,3 +1,4 @@
+import { isTrustedRendererDocument, rendererDevUrl } from '../../src/main/windowSecurity'
 import { describe, expect, it } from 'vitest'
 import { isAppNavigation, isSafeExternalUrl } from '../../src/main/windowSecurity'
 
@@ -54,5 +55,19 @@ describe('isAppNavigation', () => {
   it('refuses unparseable input', () => {
     expect(isAppNavigation('::::', {})).toBe(false)
     expect(isAppNavigation('', { devUrl: 'http://localhost:5173' })).toBe(false)
+  })
+})
+
+describe('packaged renderer and exact IPC document', () => {
+  it('ignores a dev URL in a packaged build', () => {
+    expect(rendererDevUrl(true, 'http://attacker.invalid/')).toBeUndefined()
+    expect(rendererDevUrl(false, 'http://localhost:5173/')).toBe('http://localhost:5173/')
+  })
+  it('rejects other paths and query strings, even on the same dev origin', () => {
+    expect(isTrustedRendererDocument('http://localhost:5173/other', 'http://localhost:5173/')).toBe(false)
+    expect(isTrustedRendererDocument('file:///app/index.html?other', 'file:///app/index.html')).toBe(false)
+    expect(isTrustedRendererDocument('file:///app/index.html#settings', 'file:///app/index.html')).toBe(true)
+    expect(isTrustedRendererDocument('file:///other/index.html', 'file:///app/index.html')).toBe(false)
+    expect(isTrustedRendererDocument('invalid', 'file:///app/index.html')).toBe(false)
   })
 })
