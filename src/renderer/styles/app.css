@@ -807,30 +807,37 @@ textarea.field {
   background: var(--well);
 }
 
-/* Modal: fixed full-window backdrop + centered elevated card. */
+/* Modal: fixed full-window backdrop + centered elevated card. The card never
+   grows past the window: its body scrolls while the header and footer stay. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 60;
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
   padding: 24px;
   background: rgba(8, 8, 6, 0.5);
 }
 .modal-card {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
   background: var(--card-el);
   border: 1px solid var(--border-s);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: clip;
   animation: qpop 0.16s ease;
+  /* A tall card reaches into the titlebar's drag strip; keep it clickable. */
+  -webkit-app-region: no-drag;
 }
 .modal-head {
+  flex: none;
   display: flex;
   align-items: flex-start;
   gap: 11px;
-  padding: 18px 20px 14px;
+  padding: 18px 20px 10px;
 }
 .modal-title {
   font-size: 16px;
@@ -862,9 +869,15 @@ textarea.field {
   background: var(--well);
 }
 .modal-body {
-  padding: 0 20px 4px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The top 4px keep the first field's focus ring inside the scroll area. */
+  padding: 4px 20px;
 }
 .modal-foot {
+  flex: none;
   display: flex;
   gap: 10px;
   padding: 18px 20px;
