@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -20,5 +20,17 @@ describe('FileVaultStorage', () => {
     await storage.clear()
     expect(await storage.read()).toBeNull()
     await storage.clear() // idempotent on an already-empty store
+  })
+  it('retains the old ciphertext when cancelled before the rename and removes staging data', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vault-restore-'))
+    const file = join(dir, 'vault.json')
+    const storage = new FileVaultStorage(file)
+    await storage.write('old-ciphertext')
+    let checks = 0
+    await expect(storage.replace('new-ciphertext', () => {
+      if (++checks === 3) throw new Error('Cancelled')
+    })).rejects.toThrow('Cancelled')
+    expect(await storage.read()).toBe('old-ciphertext')
+    expect(existsSync(`${file}.tmp`)).toBe(false)
   })
 })

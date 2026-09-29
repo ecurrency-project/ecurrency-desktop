@@ -200,7 +200,7 @@ describe('VaultOrchestrator', () => {
 
   it('generates and validates mnemonics via the injected tools', async () => {
     const { orch } = make()
-    expect(await orch.handle({ type: 'vault.generateMnemonic' })).toEqual({ ok: true, value: MNEMONIC })
+    expect(await orch.handle({ type: 'vault.generateMnemonic', sessionId: 'test-session' })).toEqual({ ok: true, value: MNEMONIC })
     expect(await orch.handle({ type: 'vault.validateMnemonic', phrase: MNEMONIC })).toEqual({ ok: true, value: true })
     expect(await orch.handle({ type: 'vault.validateMnemonic', phrase: 'nope' })).toEqual({ ok: true, value: false })
   })
@@ -276,8 +276,8 @@ describe('VaultOrchestrator', () => {
   it('reveals the mnemonic only with the right password', async () => {
     const { orch } = make()
     await orch.handle({ type: 'vault.create', mnemonic: MNEMONIC, password: 'pw' })
-    expect(await orch.handle({ type: 'vault.revealMnemonic', password: 'pw' })).toEqual({ ok: true, value: MNEMONIC })
-    expect((await orch.handle({ type: 'vault.revealMnemonic', password: 'x' })).ok).toBe(false)
+    expect(await orch.handle({ type: 'vault.revealMnemonic', sessionId: 'test-session', password: 'pw' })).toEqual({ ok: true, value: MNEMONIC })
+    expect((await orch.handle({ type: 'vault.revealMnemonic', sessionId: 'test-session', password: 'x' })).ok).toBe(false)
   })
 
   it('never returns seed material across the bridge', async () => {

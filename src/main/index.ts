@@ -1,18 +1,22 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, Menu, session, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, Menu, powerMonitor, session, shell, type WebContents } from 'electron'
 import { setSchnorrEnabled } from '@qbtc/crypto'
 import { PRODUCTION_CSP } from '../shared/csp'
 import { WALLET_EVENT_CHANNEL, type VaultStatus } from '../shared/protocol'
+import { SensitiveSessionManager } from './privacy/SensitiveSessionManager'
+import { protectSensitiveWindow } from './privacy/windowLifecycle'
 import { registerWalletIpc } from './ipc/router'
 import { buildAppMenu } from './menu'
 import { createWalletCore } from './vault'
 import { configureFalconWasm } from './wallet/falconWasm'
 import { initAutoUpdater } from './updater'
-import { isAppNavigation, isSafeExternalUrl } from './windowSecurity'
+import { isAppNavigation, isSafeExternalUrl, isTrustedRendererDocument, rendererDevUrl as getRendererDevUrl } from './windowSecurity'
 
 // electron-vite sets this only while running `dev` (renderer served with HMR).
-const rendererDevUrl = process.env['ELECTRON_RENDERER_URL']
+const rendererDevUrl = getRendererDevUrl(app.isPackaged, process.env['ELECTRON_RENDERER_URL'])
+const sensitiveSessions = new SensitiveSessionManager()
+const showWindows = new Map<number, () => void>()
 const isDev = rendererDevUrl !== undefined
 
 // The bundled renderer entry — the ONLY file:// URL the window may show, and the
@@ -54,12 +58,10 @@ function hardenWebContents(contents: WebContents): void {
   })
 }
 
-// IPC trust predicate: only the app's own top-level document may talk to the
-// wallet channel. Reuses the navigation predicate — the set of frames we would
-// ever load IS the set of frames allowed to speak.
-const trustedIpcSender = (frameUrl: string): boolean => isAppNavigation(frameUrl, { devUrl: rendererDevUrl, appFileUrl })
+// Only the current top-level document of the registered window may use IPC.
+const trustedIpcSender = (frameUrl: string): boolean => isTrustedRendererDocument(frameUrl, rendererDevUrl ?? appFileUrl)
 
-function createWindow(): void {
+function createWindow(lockVault: () => void, cancelSensitiveScan: (sessionId: string) => void): void {
   const win = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -74,10 +76,28 @@ function createWindow(): void {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: !app.isPackaged,
     },
   })
 
-  win.once('ready-to-show', () => win.show())
+  let recoveryPrompt = false
+  const showSafe = protectSensitiveWindow(win, sensitiveSessions, lockVault, cancelSensitiveScan, () => {
+    if (recoveryPrompt || win.isDestroyed()) return
+    recoveryPrompt = true
+    void dialog.showMessageBox({
+      type: 'error', message: 'The wallet window could not recover.',
+      detail: 'Your wallet is locked. Retry opening the window or close the application.',
+      buttons: ['Retry', 'Close'], defaultId: 0, cancelId: 1,
+    }).then(({ response }) => {
+      recoveryPrompt = false
+      if (win.isDestroyed()) return
+      if (response === 0) showSafe()
+      else win.close()
+    }).catch(() => { recoveryPrompt = false; if (!win.isDestroyed()) win.close() })
+  })
+  showWindows.set(win.id, showSafe)
+  win.on('closed', () => showWindows.delete(win.id))
+  win.once('ready-to-show', showSafe)
 
   if (rendererDevUrl !== undefined) {
     void win.loadURL(rendererDevUrl)
@@ -110,12 +130,18 @@ app
     setSchnorrEnabled(true)
 
     // The Vault lives here, in main — sole owner of the decrypted seed.
-    const { vault, orchestrator } = createWalletCore()
-    registerWalletIpc(orchestrator, { isTrustedSender: trustedIpcSender })
+    const { vault, orchestrator, cancelSensitiveScan } = createWalletCore()
+    registerWalletIpc(orchestrator, { isTrustedSender: trustedIpcSender, sessions: sensitiveSessions, getVaultStatus: () => vault.getStatus() })
+    const lockVault = (): void => { vault.lock() }
+    const suspend = (): void => { sensitiveSessions.revokeAll('suspend'); lockVault() }
+    powerMonitor.on('suspend', suspend)
+    powerMonitor.on('lock-screen', suspend)
+    powerMonitor.on('user-did-resign-active', suspend)
 
     // Push status changes to the renderer (notably an autolock 'timeout' lock),
     // so the UI can return to the lock screen without polling.
     vault.on((event) => {
+      if (event.type === 'locked' || event.type === 'destroyed') sensitiveSessions.revokeAll('locked')
       const status: VaultStatus =
         event.type === 'locked' ? 'locked' : event.type === 'destroyed' ? 'empty' : 'unlocked'
       for (const win of BrowserWindow.getAllWindows()) {
@@ -123,14 +149,15 @@ app
       }
     })
 
-    createWindow()
+    createWindow(lockVault, cancelSensitiveScan)
 
     // Check for updates against the generic HTTPS feed (packaged builds only).
     // The lifecycle is pushed to the renderer for an in-app banner (see updater.ts).
     initAutoUpdater()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(lockVault, cancelSensitiveScan)
+      else for (const showSafe of showWindows.values()) showSafe()
     })
   })
   .catch((err: unknown) => {

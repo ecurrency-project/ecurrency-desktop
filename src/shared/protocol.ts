@@ -42,10 +42,10 @@ export type VaultRequest =
   | { readonly type: 'vault.unlock'; readonly password: string }
   | { readonly type: 'vault.lock' }
   | { readonly type: 'vault.destroy' }
-  | { readonly type: 'vault.revealMnemonic'; readonly password: string }
+  | { readonly type: 'vault.revealMnemonic'; readonly password: string; readonly sessionId: string }
   | { readonly type: 'vault.changePassword'; readonly oldPassword: string; readonly newPassword: string }
   | { readonly type: 'vault.noteActivity' }
-  | { readonly type: 'vault.generateMnemonic' }
+  | { readonly type: 'vault.generateMnemonic'; readonly sessionId: string }
   | { readonly type: 'vault.validateMnemonic'; readonly phrase: string }
   | { readonly type: 'wallet.getReceiveAddress'; readonly algo?: AddressAlgo }
   | { readonly type: 'wallet.getNewReceiveAddress'; readonly algo?: AddressAlgo }
@@ -73,10 +73,10 @@ export type VaultRequest =
   | { readonly type: 'wallets.addSeed'; readonly label: string; readonly mnemonic: string; readonly passphrase?: string }
   | { readonly type: 'wallets.addKey'; readonly label: string; readonly wif: string; readonly algo?: AddressAlgo }
   | { readonly type: 'wallets.inspectKey'; readonly wif: string }
-  | { readonly type: 'sweep.scan'; readonly wif: string; readonly algo?: AddressAlgo }
+  | { readonly type: 'sweep.scan'; readonly wif: string; readonly sessionId: string; readonly algo?: AddressAlgo }
   | { readonly type: 'sweep.build'; readonly recipient: string; readonly amountAtomic?: string; readonly sendMax: boolean }
   | { readonly type: 'sweep.confirm' }
-  | { readonly type: 'sweep.cancel' }
+  | { readonly type: 'sweep.cancel'; readonly sessionId: string }
   | { readonly type: 'wallets.restore'; readonly mnemonic: string; readonly password: string }
   | { readonly type: 'wallets.switch'; readonly id: string }
   | { readonly type: 'wallets.rename'; readonly id: string; readonly label: string }
@@ -498,6 +498,7 @@ export interface PingResult {
 export interface SerializedError {
   readonly name: string
   readonly message: string
+  readonly retryAfterMs?: number
 }
 
 export type WalletResponse<T> =
@@ -512,13 +513,13 @@ export interface WalletApi {
   unlock(password: string): Promise<VaultStatus>
   lock(): Promise<VaultStatus>
   destroy(): Promise<VaultStatus>
-  revealMnemonic(password: string): Promise<string>
+  revealMnemonic(password: string, sessionId: string): Promise<string>
   /** Change the unlock password (re-auth with the current one). */
   changePassword(oldPassword: string, newPassword: string): Promise<void>
   /** Signal real user activity (UI input) so main resets the idle-autolock timer. Fire-and-forget. */
   noteActivity(): Promise<void>
   /** Generate a fresh recovery phrase in main (not sealed) for display. */
-  generateMnemonic(): Promise<string>
+  generateMnemonic(sessionId: string): Promise<string>
   /** Validate a recovery phrase (words + checksum) in main. */
   validateMnemonic(phrase: string): Promise<boolean>
   /** Current receive address for the chosen algorithm (default classical). Requires unlocked. */
@@ -580,14 +581,14 @@ export interface WalletApi {
   addKeyWallet(label: string, wif: string, algo?: AddressAlgo): Promise<readonly WalletInfo[]>
   /** Start an ephemeral sweep from a WIF: materialize the key in main (never stored)
    *  and return its address + balance. Replaces any previous in-flight sweep. */
-  sweepScan(wif: string, algo?: AddressAlgo): Promise<SweepScan>
+  sweepScan(wif: string, sessionId: string, algo?: AddressAlgo): Promise<SweepScan>
   /** Build and hold the sweep transaction; returns a preview to confirm. `sendMax`
    *  spends the whole balance with no change (the usual sweep); otherwise `amountAtomic`. */
   sweepBuild(recipient: string, amountAtomic: string | undefined, sendMax: boolean): Promise<SendPreview>
   /** Sign + broadcast the held sweep, then wipe the key from memory. */
   sweepConfirm(): Promise<SendResult>
   /** Abandon an in-flight sweep and wipe the key from memory. */
-  sweepCancel(): Promise<void>
+  sweepCancel(sessionId: string): Promise<void>
   /** Forgot-password recovery: re-create the primary wallet from a recovery phrase + new password. */
   restoreWallet(mnemonic: string, password: string): Promise<VaultStatus>
   /** Make a wallet active; returns the updated list. */
@@ -653,5 +654,7 @@ export function ok<T>(value: T): WalletResponse<T> {
 // object ever crosses the bridge.
 export function fail(err: unknown): WalletResponse<never> {
   const e = err instanceof Error ? err : new Error(String(err))
-  return { ok: false, error: { name: e.name, message: e.message } }
+  const retry = (e as Error & { retryAfterMs?: unknown }).retryAfterMs
+  const retryAfterMs = typeof retry === 'number' && Number.isFinite(retry) && retry >= 0 ? retry : undefined
+  return { ok: false, error: { name: e.name, message: e.message, ...(retryAfterMs === undefined ? {} : { retryAfterMs }) } }
 }

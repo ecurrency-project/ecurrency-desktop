@@ -1,4 +1,4 @@
-import { useId, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react'
+import { useEffect, useId, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react'
 import { EyeIcon } from './icons'
 
 export type FieldState = 'default' | 'error' | 'success'
@@ -48,6 +48,17 @@ export function PasswordField({ label, id, ...rest }: PasswordFieldProps) {
   const autoId = useId()
   const fieldId = id ?? autoId
   const [show, setShow] = useState(false)
+  useEffect(() => {
+    const hide = (): void => setShow(false)
+    const visibility = (): void => { if (document.visibilityState !== 'visible') hide() }
+    window.addEventListener('blur', hide)
+    document.addEventListener('visibilitychange', visibility)
+    return () => {
+      window.removeEventListener('blur', hide)
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [])
+  useEffect(() => { if (rest.value === '') setShow(false) }, [rest.value])
   return (
     <div>
       {label !== undefined && (
@@ -55,8 +66,12 @@ export function PasswordField({ label, id, ...rest }: PasswordFieldProps) {
           {label}
         </label>
       )}
-      <div className="field-wrap">
-        <input id={fieldId} type={show ? 'text' : 'password'} {...rest} />
+      <div className="field-wrap" onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setShow(false)
+      }}>
+        <input id={fieldId} type={show ? 'text' : 'password'} autoComplete="current-password" {...rest}
+          spellCheck={false} autoCorrect="off" autoCapitalize="none"
+          onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onDragStart={(event) => event.preventDefault()} />
         <button
           type="button"
           className="field-affix-btn"

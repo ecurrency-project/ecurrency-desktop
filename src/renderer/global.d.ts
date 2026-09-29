@@ -1,10 +1,13 @@
 import type { UpdaterApi, WalletApi } from '../shared/protocol'
+import type { PrivacyApi } from '../shared/privacy'
+import type { BridgeApi } from '../shared/bridge'
 
 // The preload exposes exactly this on the renderer's window (contextBridge).
 declare global {
   interface Window {
-    readonly wallet: WalletApi
+    readonly wallet: BridgeApi<WalletApi>
     readonly updater: UpdaterApi
+    readonly privacy: BridgeApi<PrivacyApi>
   }
 }
 

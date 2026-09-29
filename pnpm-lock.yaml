@@ -21,8 +21,8 @@ importers:
         specifier: 1.1.0
         version: 1.1.0
       '@qbtc/vault':
-        specifier: 1.0.0
-        version: 1.0.0(@qbtc/crypto@1.1.0)
+        specifier: 1.1.0
+        version: 1.1.0(@qbtc/crypto@1.1.0)
       electron-updater:
         specifier: ^6.3.9
         version: 6.8.9
@@ -668,8 +668,8 @@ packages:
   '@qbtc/crypto@1.1.0':
     resolution: {integrity: sha512-dwJudICN0GQruC34KRha64phKOgCUMM4KTpVX+JC4YUfO2F3rxk1l6C96KDKqEOzRB8X0Zho48ElYz2DzDJjUw==}
 
-  '@qbtc/vault@1.0.0':
-    resolution: {integrity: sha512-InoOM8aB+LSE9E/m8Js1QeNviGdV1EfZqwE1rUmka4FFYv65lgOLIZtvXQuC6pmfuD+GN9Gak+LZ3KVC6zIi9A==}
+  '@qbtc/vault@1.1.0':
+    resolution: {integrity: sha512-vdoR9VttEr/7z5Zk1F0A8rkcAHtHzukD1GF9KnwmfIqVrMJQwSANuF27XaPlxfPCVNp1te8IaFCcv8ABoFTspA==}
     peerDependencies:
       '@qbtc/crypto': ^1.1.0
 
@@ -2930,7 +2930,7 @@ snapshots:
       '@scure/bip32': 1.6.2
       '@scure/bip39': 1.5.4
 
-  '@qbtc/vault@1.0.0(@qbtc/crypto@1.1.0)':
+  '@qbtc/vault@1.1.0(@qbtc/crypto@1.1.0)':
     dependencies:
       '@qbtc/crypto': 1.1.0
 
