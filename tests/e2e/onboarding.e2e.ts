@@ -23,7 +23,15 @@ test('create a wallet, confirm the phrase, then lock and unlock', async () => {
     await page.getByRole('button', { name: 'Create a new wallet' }).click()
 
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
-    await page.getByLabel('Confirm password', { exact: true }).fill(PASSWORD)
+    // A mismatch shows only after the field is left, and is tied to that field.
+    const confirmPassword = page.getByLabel('Confirm password', { exact: true })
+    await confirmPassword.fill(`${PASSWORD}-typo`)
+    await expect(page.getByText("Passwords don't match yet.")).toHaveCount(0)
+    await confirmPassword.blur()
+    await expect(confirmPassword).toHaveAttribute('aria-invalid', 'true')
+    await expect(confirmPassword).toHaveAccessibleDescription("Passwords don't match yet.")
+    await confirmPassword.fill(PASSWORD)
+    await expect(confirmPassword).not.toHaveAttribute('aria-invalid')
     await page.getByRole('button', { name: 'Continue' }).click()
 
     await expect(page.getByTestId('seed-word')).toHaveCount(0)
@@ -49,12 +57,21 @@ test('create a wallet, confirm the phrase, then lock and unlock', async () => {
     // Fill each quizzed word using the index encoded in its aria-label ("Word N").
     const fields = page.locator('input[aria-label^="Word "]')
     await expect(fields).toHaveCount(3)
+    // A wrong word is flagged only after the field is left, with text as well as color.
+    const first = fields.first()
+    await first.fill('zzzz')
+    await expect(first).not.toHaveAttribute('aria-invalid')
+    await first.blur()
+    await expect(first).toHaveAttribute('aria-invalid', 'true')
+    await expect(first).toHaveAccessibleDescription(/^That's not word #\d+ of your phrase\.$/)
     for (let i = 0; i < (await fields.count()); i++) {
       const field = fields.nth(i)
       const aria = (await field.getAttribute('aria-label')) ?? ''
       const n = Number(aria.replace('Word ', ''))
       await field.fill(words[n - 1])
     }
+    await expect(first).not.toHaveAttribute('aria-invalid')
+    await expect(first).toHaveAccessibleDescription('Matches')
     // Leaving the window to look at the written backup keeps the typed words.
     await page.evaluate(() => window.dispatchEvent(new Event('blur')))
     await expect(fields).toHaveCount(3)
@@ -64,12 +81,48 @@ test('create a wallet, confirm the phrase, then lock and unlock', async () => {
     await page.getByRole('button', { name: 'Open my wallet' }).click()
     await expect(page.getByRole('button', { name: 'Lock', exact: true })).toBeVisible()
 
-    // Lock and unlock again with the same password.
+    // Lock; a wrong password marks the field invalid and describes why; then unlock.
     await page.getByRole('button', { name: 'Lock' }).click()
     await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
-    await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+    const unlockPassword = page.getByLabel('Password', { exact: true })
+    await unlockPassword.fill('not-the-password')
+    await page.getByRole('button', { name: 'Unlock' }).click()
+    await expect(unlockPassword).toHaveAttribute('aria-invalid', 'true')
+    await expect(unlockPassword).toHaveAccessibleDescription('Incorrect password — try again.')
+    await unlockPassword.fill(PASSWORD)
     await page.getByRole('button', { name: 'Unlock' }).click()
     await expect(page.getByRole('button', { name: 'Lock', exact: true })).toBeVisible()
+  } finally {
+    await app.close()
+  }
+})
+
+test('fields keep a visible focus indicator, also in forced colors', async () => {
+  const { app, page } = await launchFresh()
+  try {
+    await page.getByRole('button', { name: 'I already have a wallet' }).click()
+    await acceptPrivacy(page)
+    await page.getByLabel('Recovery phrase').fill(PHRASE)
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+    await page.getByLabel('Confirm password', { exact: true }).fill(PASSWORD)
+    await page.getByRole('button', { name: 'Restore wallet' }).click()
+    await page.getByRole('button', { name: 'Open my wallet' }).click()
+    // Native parts follow the default dark theme.
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark')
+
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Send', exact: true }).click()
+    const amount = page.getByLabel(/^Amount in /)
+    const recipient = page.getByLabel('Recipient address')
+    // The amount's wrapper draws the ring its borderless input cannot.
+    await amount.focus()
+    expect(await amount.evaluate((input) => getComputedStyle(input.parentElement!).boxShadow)).not.toBe('none')
+    // Forced colors drop shadows, so fields fall back to a solid outline.
+    await page.emulateMedia({ forcedColors: 'active' })
+    await recipient.focus()
+    expect(await recipient.evaluate((input) => { const style = getComputedStyle(input); return style.outlineStyle === 'solid' && style.outlineWidth === '2px' })).toBe(true)
+    await amount.focus()
+    expect(await amount.evaluate((input) => getComputedStyle(input.parentElement!).outlineStyle)).toBe('solid')
   } finally {
     await app.close()
   }

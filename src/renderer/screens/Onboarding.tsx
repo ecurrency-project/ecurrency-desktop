@@ -32,6 +32,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [ack, setAck] = useState(false)
   const [confirmIdx, setConfirmIdx] = useState<number[]>([])
   const [confirmVals, setConfirmVals] = useState<string[]>(['', '', ''])
+  // Mismatches show once the user has left a field, not on every keystroke.
+  const [confirmLeft, setConfirmLeft] = useState<boolean[]>([false, false, false])
+  const [pwConfirmLeft, setPwConfirmLeft] = useState(false)
   const [importText, setImportText] = useState('')
   const [importValid, setImportValid] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,8 +49,8 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     validation.current++
   })
   function clearDraft(): void {
-    setMnemonic(''); setImportText(''); setImportValid(false); setPw(''); setPwConfirm('')
-    setConfirmVals(['', '', '']); setConfirmIdx([]); setRevealed(false); setAck(false)
+    setMnemonic(''); setImportText(''); setImportValid(false); setPw(''); setPwConfirm(''); setPwConfirmLeft(false)
+    setConfirmVals(['', '', '']); setConfirmLeft([false, false, false]); setConfirmIdx([]); setRevealed(false); setAck(false)
   }
   function cancel(): void {
     if (operation.pending.current) return
@@ -69,6 +72,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
   const words = useMemo(() => (mnemonic ? mnemonic.split(' ') : []), [mnemonic])
   const pwOk = pw.length >= 8 && pw === pwConfirm
+  const pwMismatch = pwConfirmLeft && pwConfirm.length > 0 && pw !== pwConfirm
   const importNormalized = importText.trim().replace(/\s+/g, ' ')
 
   async function seal(phrase: string): Promise<void> {
@@ -103,6 +107,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     access.controller.stop('step')
     setConfirmIdx(pickThree(words.length))
     setConfirmVals(['', '', ''])
+    setConfirmLeft([false, false, false])
     setStep('confirm')
   }
 
@@ -192,9 +197,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             </div>
             <PasswordStrength password={pw} />
             <div style={{ marginTop: 16 }}>
-              <PasswordField autoComplete="new-password" label="Confirm password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} placeholder="Re-enter your password" aria-label="Confirm password" />
+              <PasswordField autoComplete="new-password" label="Confirm password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} onBlur={() => setPwConfirmLeft(true)} placeholder="Re-enter your password" aria-label="Confirm password"
+                state={pwMismatch ? 'error' : 'default'} hint={pwMismatch ? "Passwords don't match yet." : undefined} />
             </div>
-            {pwConfirm.length > 0 && pw !== pwConfirm && <div className="field-hint field-hint--error">Passwords don&apos;t match yet.</div>}
             <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 14 }}>We can&apos;t recover this password for you.</div>
             {error && <div className="field-hint field-hint--error">{error}</div>}
             <Button fullWidth size="cta" disabled={!pwOk || busy} onClick={() => void pwContinue()} style={{ marginTop: 20 }}>
@@ -236,6 +241,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
               {confirmIdx.map((wi, i) => {
                 const val = confirmVals[i] ?? ''
                 const matched = val.trim().toLowerCase() === words[wi]
+                const wrong = !matched && val.length > 0 && (confirmLeft[i] ?? false)
                 return (
                   <TextField
                     {...secretInputProps}
@@ -244,9 +250,11 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                     label={`Word #${wi + 1}`}
                     value={val}
                     onChange={(e) => setConfirmVals((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
+                    onBlur={() => setConfirmLeft((prev) => prev.map((v, j) => (j === i ? true : v)))}
                     placeholder="Type the word"
                     aria-label={`Word ${wi + 1}`}
-                    state={val.length === 0 ? 'default' : matched ? 'success' : 'error'}
+                    state={matched ? 'success' : wrong ? 'error' : 'default'}
+                    hint={matched ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckIcon size={13} />Matches</span> : wrong ? `That's not word #${wi + 1} of your phrase.` : undefined}
                   />
                 )
               })}
@@ -276,7 +284,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                   aria-label="Recovery phrase"
                   state={importText.length > 0 && importValid ? 'success' : 'default'}
                   hint={importText.length === 0 ? 'Enter your 12 words, separated by spaces.' : importValid ? 'Valid recovery phrase' : 'Not a valid 12-word phrase yet.'}
-                  style={{ height: 120, borderRadius: 12 }}
+                  style={{ minHeight: 120, borderRadius: 12 }}
                 />
                 <button
                   type="button"

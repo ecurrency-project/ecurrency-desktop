@@ -9,6 +9,8 @@
 @import "../brand/theme.css";
 
 :root {
+  /* Native parts (scrollbars, checkboxes, the caret) follow the theme too. */
+  color-scheme: dark;
   --bg: #131311;
   --sidebar: #1b1b18;
   --card: #1b1b18;
@@ -38,6 +40,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --bg: #f6f5f1;
   --sidebar: #ffffff;
   --card: #ffffff;
@@ -523,6 +526,24 @@ textarea.field {
   padding: 14px;
   line-height: 1.7;
   resize: none;
+  /* Grows with long keys and phrases instead of a manual resize handle, then scrolls. */
+  field-sizing: content;
+  max-height: calc(12lh + 30px);
+}
+/* Read-only fields show data, not an input to fill in. */
+.field:read-only {
+  background: transparent;
+}
+/* Inline label editor: mounted only while editing, so it always reads as active. */
+.field--label {
+  border-color: var(--primary);
+}
+.field--compact {
+  max-width: 280px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 13px;
 }
 .field-hint {
   font-size: 12px;
@@ -546,9 +567,21 @@ textarea.field {
   background: var(--well);
   transition: border-color 0.15s ease;
 }
+.field-wrap--error {
+  border-color: var(--danger);
+}
 .field-wrap:focus-within {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+/* Forced-colors mode drops box-shadows and recolors borders, which leaves the
+   focus rings above invisible; draw a system-colored outline instead. */
+@media (forced-colors: active) {
+  .field:focus,
+  .field-wrap:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
 }
 .field-wrap > input {
   flex: 1;

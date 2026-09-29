@@ -653,11 +653,14 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [confirmLeft, setConfirmLeft] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const operation = useOperation()
   const { busy } = operation
   const close = (): void => { if (!operation.pending.current) { setCurrent(''); setNext(''); setConfirm(''); onClose() } }
   const valid = current.length > 0 && next.length >= 8 && next === confirm
+  // Shown once the user leaves the confirmation field, not on every keystroke.
+  const mismatch = confirmLeft && confirm.length > 0 && next !== confirm
 
   async function submit(): Promise<void> {
     if (!valid || !operation.start()) return
@@ -693,8 +696,8 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
           <PasswordField autoComplete="new-password" label="New password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="At least 8 characters" aria-label="New password" />
           {next.length > 0 && <PasswordStrength password={next} />}
         </div>
-        <PasswordField autoComplete="new-password" label="Confirm new password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter new password" aria-label="Confirm new password" />
-        {confirm.length > 0 && next !== confirm && <div className="field-hint field-hint--error">Passwords don&apos;t match yet.</div>}
+        <PasswordField autoComplete="new-password" label="Confirm new password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onBlur={() => setConfirmLeft(true)} placeholder="Re-enter new password" aria-label="Confirm new password"
+          state={mismatch ? 'error' : 'default'} hint={mismatch ? "Passwords don't match yet." : undefined} />
         {error !== null && <div className="field-hint field-hint--error">{error}</div>}
       </div>
     </Modal>

@@ -78,6 +78,7 @@ function RestoreForm({ onRestored, onBack }: { onRestored: () => void; onBack: (
   const [phrase, setPhrase] = useState('')
   const [pw, setPw] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [confirmLeft, setConfirmLeft] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const operation = useOperation()
   const { busy } = operation
@@ -87,6 +88,8 @@ function RestoreForm({ onRestored, onBack }: { onRestored: () => void; onBack: (
     access.controller.stop('closed'); setPhrase(''); setPw(''); setConfirm(''); onBack()
   }
   const valid = phrase.trim().length > 0 && pw.length >= 8 && pw === confirm
+  // Shown once the user leaves the confirmation field, not on every keystroke.
+  const mismatch = confirmLeft && confirm.length > 0 && pw !== confirm
 
   async function submit(): Promise<void> {
     if (!valid || !access.controller.ticket() || !operation.start()) return
@@ -128,8 +131,8 @@ function RestoreForm({ onRestored, onBack }: { onRestored: () => void; onBack: (
               <PasswordField autoComplete="new-password" label="New password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 8 characters" aria-label="New password" />
               {pw.length > 0 && <PasswordStrength password={pw} />}
             </div>
-            <PasswordField autoComplete="new-password" label="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter password" aria-label="Confirm password" />
-            {confirm.length > 0 && pw !== confirm && <div className="field-hint field-hint--error">Passwords don&apos;t match yet.</div>}
+            <PasswordField autoComplete="new-password" label="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onBlur={() => setConfirmLeft(true)} placeholder="Re-enter password" aria-label="Confirm password"
+              state={mismatch ? 'error' : 'default'} hint={mismatch ? "Passwords don't match yet." : undefined} />
           </div>
           <Button fullWidth size="cta" disabled={busy || !valid} onClick={() => void submit()} style={{ marginTop: 18 }}>
             {busy ? 'Restoring…' : 'Restore wallet'}

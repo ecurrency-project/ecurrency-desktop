@@ -24,6 +24,7 @@ const ICONS = {
   snow: '<path d="M12 2v20"/><path d="M3.8 7l16.4 10"/><path d="M20.2 7L3.8 17"/><path d="M9 3.6l3 3 3-3"/><path d="M9 20.4l3-3 3 3"/><path d="M3.6 9.2l1.1 4.1M20.4 9.2l-1.1 4.1"/><path d="M3.6 14.8l1.1-4.1M20.4 14.8l-1.1-4.1"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>',
   pencil: '<path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3z"/><path d="M13.5 6.5l3 3"/>',
   external: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M19 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4.5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -87,6 +88,7 @@ export const PlusIcon = make('plus')
 export const SnowIcon = make('snow')
 export const SearchIcon = make('search')
 export const EyeIcon = make('eye')
+export const EyeOffIcon = make('eyeoff')
 export const PencilIcon = make('pencil')
 export const ExternalIcon = make('external')
 export const CloseIcon = make('close')
