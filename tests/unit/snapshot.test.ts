@@ -48,6 +48,13 @@ describe('SnapshotStore', () => {
     expect(await new SnapshotStore(store, sealer).load()).toBeNull()
   })
 
+  it('preserves a signed stake fee across a sealed history reload', async () => {
+    const { store, sealer } = fakes()
+    const history = { hasMore: true, items: [{ txid: 'stake', direction: 'in' as const, amountAtomic: '126', feeAtomic: '-126', confirmed: true, txType: 2 }] }
+    await new SnapshotStore(store, sealer).merge({ history })
+    expect((await new SnapshotStore(store, sealer).load())?.history).toEqual(history)
+  })
+
   it('reset drops the in-memory copy but keeps the sealed file', async () => {
     const { store, sealer, raw } = fakes()
     const s = new SnapshotStore(store, sealer)
