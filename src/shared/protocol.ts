@@ -193,6 +193,7 @@ export interface HistoryItem {
   readonly txid: string
   readonly direction: 'in' | 'out'
   readonly amountAtomic: string
+  /** Signed for stake transactions: a negative value represents a reward. */
   readonly feeAtomic: string
   readonly confirmed: boolean
   readonly blockHeight?: number
@@ -251,6 +252,7 @@ export interface TxDetail {
   readonly sizeBytes: number
   readonly totalInAtomic: string
   readonly totalOutAtomic: string
+  /** Signed for stake transactions: a negative value represents a reward. */
   readonly feeAtomic: string
   readonly inputs: readonly TxIoEntry[]
   readonly outputs: readonly TxIoEntry[]

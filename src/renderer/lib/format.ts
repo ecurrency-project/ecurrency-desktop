@@ -40,6 +40,18 @@ export function formatNative(atomic: string): string {
   return formatToken(atomic, NATIVE_DECIMALS)
 }
 
+/** The fee field is a signed delta for stake transactions. Its reward belongs
+ *  to the whole transaction, separately from this wallet's received amount. */
+export function transactionFeeDisplay(tx: { txType?: number; feeAtomic: string }): { label: string; amountAtomic: string } {
+  if (tx.txType === 2 && BigInt(tx.feeAtomic) < 0n) {
+    return { label: 'Staking reward', amountAtomic: (-BigInt(tx.feeAtomic)).toString() }
+  }
+  return {
+    label: tx.txType === 5 ? 'Penalty' : tx.txType === 6 ? 'Burned' : 'Fee',
+    amountAtomic: tx.feeAtomic,
+  }
+}
+
 /** Parse a decimal native-coin string into atomic units (bigint). Throws on bad input. */
 export function parseNative(decimal: string): bigint {
   return parseToken(decimal, NATIVE_DECIMALS)

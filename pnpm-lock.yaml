@@ -15,8 +15,8 @@ importers:
         specifier: 5.3.0
         version: 5.3.0
       '@qbtc/chain':
-        specifier: 1.1.0
-        version: 1.1.0
+        specifier: 1.1.1
+        version: 1.1.1
       '@qbtc/crypto':
         specifier: 1.1.0
         version: 1.1.0
@@ -662,8 +662,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  '@qbtc/chain@1.1.0':
-    resolution: {integrity: sha512-RdaQ20WgwFJRzdT0Xz6ByL4VhKabS5jM9kR8pxKat/nXGMbkkETnbsIR0upSE+PVwnm4CIgXk/+wfa5bcv59Bg==}
+  '@qbtc/chain@1.1.1':
+    resolution: {integrity: sha512-BIc8wYb3wCeUEVwgnkGOmXMtotDQyJ9vjoI0PyT5cH/1sGfW+7vW2CbpgHkbKA+HE6SPCSZ3xgnn3fJyko8QCg==}
 
   '@qbtc/crypto@1.1.0':
     resolution: {integrity: sha512-dwJudICN0GQruC34KRha64phKOgCUMM4KTpVX+JC4YUfO2F3rxk1l6C96KDKqEOzRB8X0Zho48ElYz2DzDJjUw==}
@@ -2920,7 +2920,7 @@ snapshots:
     dependencies:
       playwright: 1.60.0
 
-  '@qbtc/chain@1.1.0': {}
+  '@qbtc/chain@1.1.1': {}
 
   '@qbtc/crypto@1.1.0':
     dependencies:

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { AddressAlgo, HistoryItem, TxDetail, TxIoEntry } from '../../shared/protocol'
 import { brand } from '../brand'
-import { formatNative, formatToken, historyAmount, shortHash, tokenLabels } from '../lib/format'
+import { formatNative, formatToken, historyAmount, shortHash, tokenLabels, transactionFeeDisplay } from '../lib/format'
 import { useAdvancedMode } from '../lib/prefs'
 import { disassembleScript } from '../lib/script'
 import { assetLabelFor } from '../brand/labels'
@@ -57,9 +57,9 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
 
   const incoming = tx.direction === 'in'
   const amountColor = incoming ? 'var(--success)' : 'var(--ink-900)'
-  // What the input−output difference MEANS depends on the type: a slashing
-  // tx's "fee" is the penalty the protocol keeps, a burn's is the burned sum.
-  const feeLabel = detail?.txType === 5 ? 'Penalty' : detail?.txType === 6 ? 'Burned' : 'Fee'
+  const fee = detail === null ? null : transactionFeeDisplay(detail)
+  const feeLabel = fee?.label ?? 'Fee'
+  const feeValue = `${formatNative(fee?.amountAtomic ?? '0')} ${asset}`
   const ioText = (e: TxIoEntry): string => {
     if (e.tokenId !== undefined) {
       const t = tokenById.get(e.tokenId)
@@ -164,12 +164,12 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                   <FlowChip label="Total in" value={`${formatNative(detail.totalInAtomic)} ${asset}`} />
                   <FlowChip label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${asset}`} />
-                  <FlowChip label={feeLabel} value={`${formatNative(detail.feeAtomic)} ${asset}`} />
+                  <FlowChip label={feeLabel} value={feeValue} />
                 </div>
                 <IoList title="Inputs" entries={detail.inputs} sumAtomic={detail.totalInAtomic} incoming={incoming} ioText={ioText} kind="in" advanced={advanced} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 2px' }}>
                   <span style={{ height: 1, flex: 1, background: 'var(--border)' }} />
-                  <span style={{ fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>fee {formatNative(detail.feeAtomic)} {asset}</span>
+                  <span style={{ fontSize: 11, color: 'var(--ink-500)', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>{feeLabel} {feeValue}</span>
                   <span style={{ height: 1, flex: 1, background: 'var(--border)' }} />
                 </div>
                 <IoList title="Outputs" entries={detail.outputs} sumAtomic={detail.totalOutAtomic} incoming={incoming} ioText={ioText} kind="out" advanced={advanced} />
@@ -182,7 +182,7 @@ export function TxDetailDrawer({ tx, onClose }: { tx: HistoryItem; onClose: () =
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <SummaryRow label="Total in" value={`${formatNative(detail.totalInAtomic)} ${asset}`} first />
               <SummaryRow label="Total out" value={`${formatNative(detail.totalOutAtomic)} ${asset}`} />
-              <SummaryRow label={feeLabel} value={`${formatNative(detail.feeAtomic)} ${asset}`} />
+              <SummaryRow label={feeLabel} value={feeValue} />
               <SummaryRow label="Size" value={`${String(detail.sizeBytes)} bytes`} />
               <SummaryRow label="Txid" value={shortHash(tx.txid)} copy={tx.txid} mono />
             </div>

@@ -1,4 +1,4 @@
-import type { AddressInfo, ChainTx, TokenInfo } from '@qbtc/chain'
+import { EsploraClient, type AddressInfo, type ChainTx, type TokenInfo } from '@qbtc/chain'
 import { describe, expect, it } from 'vitest'
 import { ChainService, type ChainBackend } from '../../src/main/wallet/ChainService'
 import type { DiscoveryBranch } from '../../src/main/wallet/discovery'
@@ -238,6 +238,95 @@ describe('ChainService', () => {
     )
     const { items } = await svc.getHistory()
     expect(items[0]).toMatchObject({ txid: 'tk2', direction: 'out', tokenId: 'tokA', tokenAmountAtomic: '5000000', tokenTicker: 'USDT' })
+  })
+})
+
+describe('stake history through the Esplora parser', () => {
+  function setup(owned = ['addr-reward'], splitReward = false) {
+    const stake = {
+      txid: 'stake-tx', tx_type: 'stake', is_coinbase: false, size: 200, fee: -126,
+      vin: [{ txid: 'prev', vout: 1, prevout: { value: 1_000_000_000, scripthash_address: 'addr-staker' } }],
+      vout: [
+        { value: splitReward ? 50 : 126, scripthash: 'aa', scripthash_address: 'addr-reward' },
+        ...(splitReward ? [{ value: 76, scripthash: 'cc', scripthash_address: 'addr-other' }] : []),
+        { value: 1_000_000_000, scripthash: 'bb', scripthash_address: 'addr-staker' },
+      ],
+      status: { confirmed: true, block_height: 10 },
+    }
+    const standard = {
+      txid: 'standard-tx', tx_type: 'standard', size: 200, fee: 5,
+      vin: [{ txid: 'other', vout: 0, prevout: { value: 100, scripthash_address: 'addr-other' } }],
+      vout: [{ value: 95, scripthash: 'aa', scripthash_address: 'addr-reward' }],
+      status: { confirmed: true, block_height: 9 },
+    }
+    const older = {
+      ...stake, txid: 'older-stake', fee: '-127',
+      vout: [{ ...stake.vout[0], value: 127 }, stake.vout[stake.vout.length - 1]],
+      status: { confirmed: true, block_height: 8 },
+    }
+    const paths: string[] = []
+    const backend = new EsploraClient(
+      { name: 'Test', url: 'https://test.invalid', protocol: 'esplora', network: 'mainnet', operator: 'Test', priority: 1 },
+      { maxRetries: 0, fetchImpl: async (input) => {
+        const path = new URL(String(input)).pathname
+        paths.push(path)
+        if (path === '/api/blocks/tip/height') return new Response('20')
+        if (path === '/api/blocks/tip/hash') return new Response('tip-hash')
+        if (path === '/api/tx/stake-tx') return Response.json(stake)
+        if (path.endsWith('/txs')) return Response.json([stake, standard])
+        if (path.endsWith('/txs/chain/standard-tx')) return Response.json([older])
+        if (path.endsWith('/txs/chain/older-stake')) return Response.json([])
+        const address = owned.find((a) => path === `/api/address/${a}`)
+        if (address !== undefined) {
+          return Response.json({
+            address,
+            chain_stats: { funded_txo_count: 1, funded_txo_sum: 126, spent_txo_count: 0, spent_txo_sum: 0, tx_count: 1 },
+            mempool_stats: { funded_txo_count: 0, funded_txo_sum: 0, spent_txo_count: 0, spent_txo_sum: 0, tx_count: 0 },
+          })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      } },
+    )
+    const svc = new ChainService(backend, async () => [{
+      kind: 'list', algo: 'falcon512',
+      addresses: owned.map((address, index) => ({ chain: 0, index, address })),
+    }])
+    return { svc, paths }
+  }
+
+  it('loads mixed history, follows older stake pages and opens the detail', async () => {
+    const { svc, paths } = setup()
+    const first = await svc.getHistory()
+    expect(first.hasMore).toBe(true)
+    expect(first.items).toHaveLength(2)
+    expect(first.items[0]).toMatchObject({ txid: 'stake-tx', direction: 'in', amountAtomic: '126', feeAtomic: '-126', txType: 2 })
+    expect(first.items[1]).toMatchObject({ txid: 'standard-tx', amountAtomic: '95', feeAtomic: '5' })
+
+    const full = await svc.getHistory(3)
+    expect(full.hasMore).toBe(false)
+    expect(full.items.map((tx) => tx.txid)).toEqual(['stake-tx', 'standard-tx', 'older-stake'])
+    expect(full.items[2]).toMatchObject({ amountAtomic: '127', feeAtomic: '-127', txType: 2 })
+    expect(paths).toContain('/api/address/addr-reward/txs/chain/standard-tx')
+    expect(paths).toContain('/api/address/addr-reward/txs/chain/older-stake')
+
+    const detail = await svc.getTxDetail('stake-tx')
+    expect(detail).toMatchObject({ txType: 2, isCoinbase: false, confirmations: 11, feeAtomic: '-126', totalInAtomic: '1000000000', totalOutAtomic: '1000000126' })
+    expect(detail.outputs[0]).toMatchObject({ amountAtomic: '126', own: true })
+    expect(detail.outputs[1]).toMatchObject({ amountAtomic: '1000000000', own: false })
+  })
+
+  it('deduplicates a stake touching both our principal and reward addresses', async () => {
+    const { svc } = setup(['addr-reward', 'addr-staker'])
+    const page = await svc.getHistory()
+    expect(page.items).toHaveLength(2)
+    expect(page.items[0]).toMatchObject({ direction: 'in', amountAtomic: '126', feeAtomic: '-126' })
+  })
+
+  it('separates this wallet’s reward share from the transaction’s total reward', async () => {
+    const { svc } = setup(['addr-reward'], true)
+    const page = await svc.getHistory()
+    expect(page.items[0]).toMatchObject({ direction: 'in', amountAtomic: '50', feeAtomic: '-126' })
+    expect(await svc.getTxDetail('stake-tx')).toMatchObject({ feeAtomic: '-126', totalOutAtomic: '1000000126' })
   })
 })
 

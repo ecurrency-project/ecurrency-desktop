@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatNative, formatToken, historyAmount, parseNative, parseToken, tokenLabels } from '../../src/renderer/lib/format'
+import { formatNative, formatToken, historyAmount, parseNative, parseToken, tokenLabels, transactionFeeDisplay } from '../../src/renderer/lib/format'
 
 describe('formatToken', () => {
   it('formats at the given precision, trimming trailing zeros', () => {
@@ -18,6 +18,35 @@ describe('formatToken', () => {
   it('formatNative is the 8-decimal case', () => {
     expect(formatNative('123450000')).toBe('1.2345')
     expect(formatNative('0')).toBe('0')
+  })
+})
+
+describe('transactionFeeDisplay', () => {
+  it('shows a negative stake fee as a positive reward without changing the source', () => {
+    const tx = { txType: 2, feeAtomic: '-126' }
+    const fee = transactionFeeDisplay(tx)
+    expect(fee).toEqual({ label: 'Staking reward', amountAtomic: '126' })
+    expect(formatNative(fee.amountAtomic)).toBe('0.00000126')
+    expect(tx.feeAtomic).toBe('-126')
+  })
+
+  it('keeps a large reward exact', () => {
+    expect(transactionFeeDisplay({ txType: 2, feeAtomic: '-9007199254740993' })).toEqual({
+      label: 'Staking reward', amountAtomic: '9007199254740993',
+    })
+  })
+
+  it.each([
+    [2, '0', 'Fee'],
+    [2, '126', 'Fee'],
+    [1, '126', 'Fee'],
+    [3, '126', 'Fee'],
+    [5, '126', 'Penalty'],
+    [6, '126', 'Burned'],
+    [undefined, '126', 'Fee'],
+    [0, '-126', 'Fee'],
+  ])('labels type %s with amount %s as %s', (txType, feeAtomic, label) => {
+    expect(transactionFeeDisplay({ txType, feeAtomic })).toEqual({ label, amountAtomic: feeAtomic })
   })
 })
 
