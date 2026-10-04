@@ -1,0 +1,7 @@
+{
+  "id": "staking-history",
+  "scope": "shared",
+  "type": "fixed",
+  "bump": "patch",
+  "text": "Transaction history and details now load for wallets receiving staking rewards. Staking rewards are shown separately from transaction fees."
+}

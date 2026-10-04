@@ -1,0 +1,7 @@
+{
+  "id": "changelog-viewer",
+  "scope": "shared",
+  "type": "added",
+  "bump": "minor",
+  "text": "Read release notes inside the wallet, even offline or before unlocking, from What’s new in the sidebar or Help menu."
+}

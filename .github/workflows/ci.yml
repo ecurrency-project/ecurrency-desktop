@@ -2,14 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
+    tags: ['*-v*']
   pull_request:
 
 jobs:
   verify:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: actions/setup-node@v4
         with:
@@ -18,9 +23,25 @@ jobs:
       - name: Enable pnpm (via corepack)
         run: corepack enable
 
-      # Switch to `--frozen-lockfile` once pnpm-lock.yaml is committed.
       - name: Install
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check release metadata
+        run: pnpm release:check
+
+      - name: Check change note coverage
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') && github.event.before != '0000000000000000000000000000000000000000')
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$RELEASE_BASE"
+          pnpm release:check --base "$RELEASE_BASE"
+
+      - name: Check tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: pnpm release:check --strict --tag "$RELEASE_TAG"
 
       - name: Typecheck
         run: pnpm typecheck

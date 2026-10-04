@@ -1,0 +1,7 @@
+{
+  "id": "local-release-tools",
+  "scope": "shared",
+  "type": "internal",
+  "bump": "none",
+  "text": "Keep local development instructions out of version control and release validation."
+}

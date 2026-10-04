@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  { ignores: ['out/**', 'dist/**', 'release/**', 'node_modules/**'] },
+  { ignores: ['out/**', 'dist/**', 'release/**', 'node_modules/**', 'docs/**', 'test-results/**', 'playwright-report/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -30,7 +30,7 @@ export default tseslint.config(
   {
     // Build-time hooks run in Node before the app is packaged, and stay
     // CommonJS because electron-builder requires them at build time.
-    files: ['build/**/*.cjs'],
+    files: ['build/**/*.cjs', 'build/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },

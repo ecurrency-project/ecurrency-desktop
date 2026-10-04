@@ -1,0 +1,7 @@
+{
+  "id": "release-workflow",
+  "scope": "shared",
+  "type": "internal",
+  "bump": "none",
+  "text": "Track change notes and prepare release metadata with independent review and validation for the current release profile."
+}
