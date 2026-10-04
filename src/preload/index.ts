@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { BridgeApi } from '../shared/bridge'
+import { SHOW_CHANGELOG_CHANNEL, type AppNavigationApi } from '../shared/appNavigation'
 import { PRIVACY_CHANNEL, PRIVACY_EVENT_CHANNEL, type PrivacyApi, type PrivacyRequest, type SessionRevoked } from '../shared/privacy'
 import {
   WALLET_CHANNEL,
@@ -141,6 +142,22 @@ const updater: UpdaterApi = {
 
 contextBridge.exposeInMainWorld('wallet', api)
 contextBridge.exposeInMainWorld('updater', updater)
+
+// Subscribe before React mounts, retaining a menu click while a new window loads.
+let pendingChangelog = false
+const changelogListeners = new Set<() => void>()
+ipcRenderer.on(SHOW_CHANGELOG_CHANNEL, () => {
+  if (changelogListeners.size === 0) pendingChangelog = true
+  else for (const listener of changelogListeners) listener()
+})
+const appNavigation: AppNavigationApi = {
+  onShowChangelog: (listener) => {
+    changelogListeners.add(listener)
+    if (pendingChangelog) { pendingChangelog = false; listener() }
+    return () => { changelogListeners.delete(listener) }
+  },
+}
+contextBridge.exposeInMainWorld('appNavigation', appNavigation)
 
 async function privacyRequest<T>(req: PrivacyRequest): Promise<WalletResponse<T>> {
   return ipcRenderer.invoke(PRIVACY_CHANNEL, req) as Promise<WalletResponse<T>>

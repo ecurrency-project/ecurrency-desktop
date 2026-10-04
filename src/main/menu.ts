@@ -6,7 +6,7 @@ import { checkForUpdatesInteractive } from './updater'
 // app.getName(), which reports the raw package name and, more importantly,
 // must stay untouched because userData derives from it.
 
-export function buildAppMenu(): Menu {
+export function buildAppMenu(showChangelog: () => void): Menu {
   const isMac = process.platform === 'darwin'
 
   const checkForUpdatesItem: MenuItemConstructorOptions = {
@@ -49,7 +49,9 @@ export function buildAppMenu(): Menu {
 
   template.push({ role: 'editMenu' }, app.isPackaged ? { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] } : { role: 'viewMenu' }, { role: 'windowMenu' })
 
-  const helpItems: MenuItemConstructorOptions[] = []
+  const helpItems: MenuItemConstructorOptions[] = [
+    { label: 'What’s new', click: showChangelog },
+  ]
   if (HOMEPAGE !== null) {
     const url = HOMEPAGE
     helpItems.push({ label: 'Learn More', click: () => void shell.openExternal(url) })

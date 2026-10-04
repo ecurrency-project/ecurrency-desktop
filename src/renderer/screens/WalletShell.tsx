@@ -49,7 +49,7 @@ function pageMeta(network: 'mainnet' | 'testnet' | null): Record<Nav, { title: s
   }
 }
 
-export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
+export function WalletShell({ collapsed = false, onShowChangelog }: { collapsed?: boolean; onShowChangelog: () => void }) {
   const [nav, setNav] = useState<Nav>('wallet')
   const [preselected, setPreselected] = useState<readonly string[]>([])
   // The footer's network selector: its label is the BUILD's network as reported
@@ -190,6 +190,10 @@ export function WalletShell({ collapsed = false }: { collapsed?: boolean }) {
           <LockIcon size={18} />
         </span>
         {!collapsed && 'Lock'}
+      </button>
+      <button type="button" className="nav-item changelog-link" data-collapsed={collapsed ? 'true' : undefined}
+        onClick={onShowChangelog} aria-label={`What’s new · Version ${__APP_VERSION__}`} title={`What’s new · Version ${__APP_VERSION__}`}>
+        {collapsed ? <span aria-hidden="true">v</span> : <>What’s new <span className="changelog-link-version">v{__APP_VERSION__}</span></>}
       </button>
     </div>
   )

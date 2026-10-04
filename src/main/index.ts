@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, Menu, powerMonitor, session, shell, type We
 import { setSchnorrEnabled } from '@qbtc/crypto'
 import { PRODUCTION_CSP } from '../shared/csp'
 import { WALLET_EVENT_CHANNEL, type VaultStatus } from '../shared/protocol'
+import { SHOW_CHANGELOG_CHANNEL } from '../shared/appNavigation'
 import { SensitiveSessionManager } from './privacy/SensitiveSessionManager'
 import { protectSensitiveWindow } from './privacy/windowLifecycle'
 import { registerWalletIpc } from './ipc/router'
@@ -61,7 +62,7 @@ function hardenWebContents(contents: WebContents): void {
 // Only the current top-level document of the registered window may use IPC.
 const trustedIpcSender = (frameUrl: string): boolean => isTrustedRendererDocument(frameUrl, rendererDevUrl ?? appFileUrl)
 
-function createWindow(lockVault: () => void, cancelSensitiveScan: (sessionId: string) => void): void {
+function createWindow(lockVault: () => void, cancelSensitiveScan: (sessionId: string) => void): BrowserWindow {
   const win = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -104,16 +105,13 @@ function createWindow(lockVault: () => void, cancelSensitiveScan: (sessionId: st
   } else {
     void win.loadFile(rendererIndex)
   }
+  return win
 }
 
 app
   .whenReady()
   .then(() => {
     applyProductionCsp()
-
-    // Brand-labelled application menu (the default one would show the raw
-    // package name in About/Hide/Quit items).
-    Menu.setApplicationMenu(buildAppMenu())
 
     // Apply window/navigation hardening to every webContents. Registered before
     // any window exists so it catches the main window's contents too.
@@ -133,6 +131,16 @@ app
     const { vault, orchestrator, cancelSensitiveScan } = createWalletCore()
     registerWalletIpc(orchestrator, { isTrustedSender: trustedIpcSender, sessions: sensitiveSessions, getVaultStatus: () => vault.getStatus() })
     const lockVault = (): void => { vault.lock() }
+    // The Help menu also works while locked, hidden, or without a macOS window.
+    Menu.setApplicationMenu(buildAppMenu(() => {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? createWindow(lockVault, cancelSensitiveScan)
+      showWindows.get(win.id)?.()
+      if (win.isMinimized()) win.restore()
+      win.focus()
+      const show = (): void => { if (!win.isDestroyed()) win.webContents.send(SHOW_CHANGELOG_CHANNEL) }
+      if (win.webContents.isLoadingMainFrame()) win.webContents.once('did-finish-load', show)
+      else show()
+    }))
     const suspend = (): void => { sensitiveSessions.revokeAll('suspend'); lockVault() }
     powerMonitor.on('suspend', suspend)
     powerMonitor.on('lock-screen', suspend)

@@ -1,8 +1,11 @@
 import { resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
 import { PRODUCTION_CSP } from './src/shared/csp'
+import { parseChangelog } from './src/shared/changelog'
+import { version } from './package.json'
 
 // Bake the production CSP into the built index.html as a <meta> tag — the form
 // Electron documents for file://-loaded pages, where response headers don't
@@ -51,6 +54,10 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    define: {
+      __APP_VERSION__: JSON.stringify(version),
+      __CHANGELOG__: JSON.stringify(parseChangelog(readFileSync(resolve(__dirname, 'CHANGELOG.md'), 'utf8'))),
+    },
     build: {
       rollupOptions: { input: { index: resolve(__dirname, 'src/renderer/index.html') } },
       assetsInlineLimit: 0,

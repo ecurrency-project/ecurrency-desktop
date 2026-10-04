@@ -916,6 +916,48 @@ textarea.field {
   padding: 18px 20px;
 }
 
+/* Bundled release history. Native modal focus, Escape and backdrop dismissal. */
+.changelog-dialog {
+  width: 700px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100dvh - 80px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border-s);
+  border-radius: 18px;
+  background: var(--card-el);
+  color: var(--ink-700);
+  box-shadow: var(--shadow);
+  overflow: clip;
+  -webkit-app-region: no-drag;
+}
+.changelog-dialog[open] { display: flex; flex-direction: column; }
+.changelog-dialog::backdrop { background: rgba(8, 8, 6, 0.5); }
+.changelog-header {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.changelog-header h1 { margin: 0; font-size: 22px; color: var(--ink-900); letter-spacing: -0.025em; }
+.changelog-header p { margin: 6px 0 0; font-size: 12px; color: var(--ink-500); }
+.changelog-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 26px 28px; }
+.changelog-body:focus-visible { outline-offset: -3px; }
+.changelog-release + .changelog-release { border-top: 1px solid var(--border); margin-top: 28px; padding-top: 28px; }
+.changelog-version { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.changelog-version h2 { margin: 0; font-size: 19px; font-weight: 600; color: var(--ink-900); }
+.changelog-version time { margin-left: auto; font-size: 12px; color: var(--ink-500); }
+.changelog-current { padding: 3px 8px; border-radius: 6px; background: var(--primary-soft); color: var(--primary); font-size: 11px; font-weight: 600; }
+.changelog-release h3 { margin: 24px 0 10px; font-size: 13px; color: var(--ink-900); }
+.changelog-release p, .changelog-release ul { margin: 0 0 14px; font-size: 13px; line-height: 1.75; }
+.changelog-release ul { padding-left: 20px; }
+.changelog-release li + li { margin-top: 10px; }
+.changelog-release strong { color: var(--ink-900); font-weight: 600; }
+.changelog-link { font-size: 12px; }
+.changelog-link-version { margin-left: auto; font-size: 11px; }
+
 /* Animations. */
 @keyframes qslide {
   from {

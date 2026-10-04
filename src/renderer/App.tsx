@@ -9,6 +9,7 @@ import { networkLabel, nodeDotColor, useBuildNetwork, useNodeStatus } from './li
 import { brand } from './brand'
 import { ChevLeftIcon, ChevRightIcon, TitleBar } from './ui'
 import { UpdateBanner } from './components/UpdateBanner'
+import { Changelog } from './components/Changelog'
 import { Onboarding } from './screens/Onboarding'
 import { Unlock } from './screens/Unlock'
 import { WalletShell } from './screens/WalletShell'
@@ -33,7 +34,10 @@ export function App() {
   // not silently drop the user's choice back to dark.
   const theme = useTheme()
   const [collapsed, setCollapsed] = useState(false)
+  const [changelogOpen, setChangelogOpen] = useState(false)
   const node = useNodeStatus()
+
+  useEffect(() => window.appNavigation.onShowChangelog(() => setChangelogOpen(true)), [])
 
   useEffect(() => {
     const root = document.documentElement
@@ -84,7 +88,7 @@ export function App() {
   let screen: ReactNode = null
   switch (route) {
     case 'wallet':
-      screen = <WalletShell collapsed={collapsed} />
+      screen = <WalletShell collapsed={collapsed} onShowChangelog={() => setChangelogOpen(true)} />
       break
     case 'unlock':
       screen = <Unlock onUnlocked={() => setRoute('wallet')} />
@@ -125,6 +129,7 @@ export function App() {
       <TitleBar left={left} theme={theme} onToggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} center={center} />
       <UpdateBanner />
       <div style={{ flex: 1, minHeight: 0 }}>{screen}</div>
+      <Changelog open={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </div>
   )
 }

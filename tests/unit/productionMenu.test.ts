@@ -16,7 +16,7 @@ function roles(items: MenuItemConstructorOptions[]): string[] {
 describe('production menu', () => {
   it('keeps zoom/edit but excludes the default reload/devtools submenu', () => {
     state.packaged = true
-    buildAppMenu()
+    buildAppMenu(vi.fn())
     const values = roles(state.template)
     expect(values).toContain('editMenu')
     expect(values).toContain('zoomIn')
@@ -24,7 +24,15 @@ describe('production menu', () => {
   })
   it('keeps developer tools in development only', () => {
     state.packaged = false
-    buildAppMenu()
+    buildAppMenu(vi.fn())
     expect(roles(state.template)).toContain('viewMenu')
+  })
+  it('exposes release history in Help even without a brand homepage', () => {
+    const showChangelog = vi.fn()
+    buildAppMenu(showChangelog)
+    const help = state.template.find((item) => item.role === 'help')
+    expect(Array.isArray(help?.submenu)).toBe(true)
+    const items = help!.submenu as MenuItemConstructorOptions[]
+    expect(items.find((item) => item.label === 'What’s new')?.click).toBe(showChangelog)
   })
 })
