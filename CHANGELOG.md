@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0 — 2026-10-04
+
+### Added
+
+- Read release notes inside the wallet, even offline or before unlocking, from What’s new in the sidebar or Help menu.
+
 ## 1.6.1 — 2026-10-01
 
 ### Fixed

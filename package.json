@@ -1,6 +1,6 @@
 {
   "name": "ecurrency-wallet-desktop",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "private": true,
   "description": "Desktop wallet for the post-quantum eCurrency (ECR) network.",
   "license": "Apache-2.0",
