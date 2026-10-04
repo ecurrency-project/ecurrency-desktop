@@ -1,4 +1,26 @@
 {
   "schemaVersion": 1,
-  "releases": []
+  "releases": [
+    {
+      "version": "1.6.1",
+      "date": "2026-10-01",
+      "tag": "ecr-v1.6.1",
+      "origin": "notes",
+      "changes": [
+        {
+          "id": "staking-history",
+          "hash": "bce851ca22a6ea611db18e845bbbe7d14bde98faf0c55835c7dad5463294c729"
+        }
+      ],
+      "body": "### Fixed\n\n- Transaction history and details now load for wallets receiving staking rewards. Staking rewards are shown separately from transaction fees."
+    },
+    {
+      "version": "1.6.0",
+      "date": "2026-09-29",
+      "tag": "ecr-v1.6.0",
+      "origin": "imported",
+      "changes": [],
+      "body": "Safer backups, more control over sensitive information, and a smoother wallet setup.\n\n### Check your imported wallets\n\n**Save a separate backup for each imported wallet.** Settings → Wallet backup\nnow shows the backup for the wallet you have selected. Earlier versions always\nshowed the Main wallet's recovery phrase. That phrase does not restore your\nimported wallets: select each one and save its own recovery phrase or private key.\n\n### Backup and privacy\n\n- **The right backup for every wallet.** Imported seed wallets show their own\n  recovery phrase and exact BIP39 passphrase; imported keys show their private\n  key, signature algorithm, address and network. Watch-only wallets export\n  public data for following the same wallet on another device.\n- **Secrets appear only when you ask.** Recovery phrases and private keys hide\n  after two minutes, when you switch windows, or when you choose Hide now.\n  Revealing a backup from Settings always asks for your password.\n- **Screen capture protection.** On Windows, the wallet window is excluded from\n  screenshots and recordings while a secret is visible. On macOS and Linux,\n  a reminder asks you to pause screen sharing and recording first.\n- **Fewer clipboard copies.** Recovery phrases and displayed private keys cannot\n  be copied or dragged out of the wallet. A pasted private key is cleared from\n  the clipboard after import.\n- **Automatic locking.** Sleep, screen lock, switching users and closing the\n  window lock the wallet. If the window stops responding, it is hidden and\n  locked; after a crash, the wallet reopens locked.\n- **Password protection.** After three incorrect passwords, further attempts\n  have a growing delay of up to 30 seconds. Unlocking, revealing backups and\n  changing the password share this limit.\n- **Safer password recovery.** Restoring from a recovery phrase replaces the\n  existing wallet only after its replacement is complete, then asks you to\n  unlock with your new password.\n\n### Improvements\n\n- **A calmer backup check.** Confirming a recovery phrase has no countdown,\n  preserves the words you enter while you consult your notes, and checks each\n  word after you leave its field.\n- **Clearer forms.** Field hints and errors work with screen readers; keyboard\n  focus stays visible in Windows High Contrast mode. Long phrases and keys\n  expand their fields, and validation waits until you leave a field.\n- **Cleaner release menus.** Developer tools, page reload and the macOS\n  Services menu are removed from release builds.\n\n### Fixes\n\n- Tall dialogs fit inside the window and scroll, keeping their actions reachable.\n- The Max button in Send from a key is aligned with the amount field.\n- Coin and transaction labels are saved correctly when using an input method editor.\n- An imported wallet's BIP39 passphrase is preserved even when it contains only spaces.\n\n### Existing wallets\n\nWallets, passwords, contacts and settings carry over without a data migration."
+    }
+  ]
 }

@@ -1,9 +1,13 @@
 {
   "schemaVersion": 1,
-  "brand": null,
-  "releaseBranch": null,
-  "tagPrefix": null,
-  "packageName": null,
-  "productName": null,
-  "aliases": []
+  "brand": "ecurrency",
+  "releaseBranch": "main",
+  "tagPrefix": "ecr-v",
+  "packageName": "ecurrency-wallet-desktop",
+  "productName": "eCurrency Wallet",
+  "aliases": [
+    "eCurrency",
+    "ECR",
+    "ecurrency.org"
+  ]
 }
